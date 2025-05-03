@@ -1,0 +1,11 @@
+version: '3'
+
+services:
+  streamlit-app:
+    build: .
+    container_name: sorteo-app
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./:/app
+    restart: unless-stopped
