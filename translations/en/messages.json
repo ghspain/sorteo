@@ -1,0 +1,57 @@
+{
+    "app": {
+        "title": "Event Raffle",
+        "configuration": "Raffle Configuration",
+        "upload_participants": "Upload participants list",
+        "upload_csv": "Upload CSV with participants data",
+        "only_checkin": "Only participants with check-in",
+        "process_list": "Process participants list",
+        "loaded_participants": "{} valid participants loaded",
+        "round_management": "Round Management",
+        "add_round": "Add raffle round",
+        "reset_session": "Reset raffle session",
+        "session_reset": "Session reset successfully",
+        "session_info": "Session Information",
+        "session_id": "Session ID: {}",
+        "date": "Date: {}",
+        "participants": "Participants: {}",
+        "total_winners": "Total winners: {}"
+    },
+    "welcome": {
+        "message": "Upload a CSV file with the participants list to start",
+        "expected_format": "Expected file format",
+        "format_description": "The CSV file should contain at least the following columns:\n- 'Checkin Date (UTC)' or 'checked_in_at': Participant's check-in date\n- 'Email' or 'email': Participant's email address\n- 'First Name' or 'first_name': Participant's first name\n- 'Last Name' or 'last_name': Participant's last name"
+    },
+    "participants": {
+        "summary": "Participants Summary"
+    },
+    "rounds": {
+        "none_configured": "No rounds configured. Add at least one round to perform the raffle.",
+        "round": "Round {}",
+        "delete_round": "Delete Round",
+        "round_name": "Round Name",
+        "num_winners": "Number of Winners",
+        "prizes": "Prizes",
+        "add_prize": "Add Prize",
+        "prize": "Prize {}",
+        "delete": "Delete",
+        "prize_name": "Prize Name",
+        "description": "Description",
+        "add_another_prize": "Add Another Prize",
+        "draw_winners": "Draw Winners",
+        "upload_first": "You must upload a participants file first",
+        "winners_drawn": "{} winners were drawn",
+        "round_winners": "Winners of this round",
+        "prize_label": "Prize: {}"
+    },
+    "winners": {
+        "summary": "Summary of all winners",
+        "download_csv": "Download results as CSV"
+    },
+    "errors": {
+        "not_enough_participants": "Not enough participants available. Requested: {}, Available: {}",
+        "no_participants": "No participants for the raffle",
+        "csv_columns_not_found": "Required columns not found in CSV",
+        "csv_processing_error": "Error processing CSV file: {}"
+    }
+}

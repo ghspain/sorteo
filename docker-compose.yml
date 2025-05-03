@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: sorteo-app
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./:/app
+    restart: unless-stopped
+    environment:
+      - ENVIRONMENT=development
+      - LOG_LEVEL=DEBUG
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    command: streamlit run app.py --server.address=0.0.0.0
+
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sorteo-test
+    volumes:
+      - ./:/app
+    environment:
+      - ENVIRONMENT=test
+      - PYTHONPATH=/app
+    command: pytest -xvs
