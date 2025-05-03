@@ -64,6 +64,16 @@ st.markdown("""
     border-radius: 5px;
     margin-bottom: 10px;
 }
+.winner-card.absent {
+    background-color: rgba(255, 0, 0, 0.1);
+    border: 1px solid #ff0000;
+    opacity: 0.7;
+}
+.absent-label {
+    color: #ff0000;
+    font-weight: bold;
+    margin-top: 5px;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -78,6 +88,8 @@ if 'session_id' not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
 if 'drawn_winners' not in st.session_state:
     st.session_state.drawn_winners = {}  # Dictionary to store winners by round
+if 'absent_participants' not in st.session_state:
+    st.session_state.absent_participants = []  # List to store absent participants' emails
 
 def reset_session():
     """Reset the session completely"""
@@ -86,6 +98,7 @@ def reset_session():
     st.session_state.rounds = []
     st.session_state.session_id = str(uuid.uuid4())
     st.session_state.drawn_winners = {}
+    st.session_state.absent_participants = []
 
 def process_csv(uploaded_file, only_checkin=True):
     """Process uploaded CSV file and filter participants"""
@@ -136,8 +149,11 @@ def draw_winners(participants_df, num_winners, exclude_emails=None):
     if exclude_emails is None:
         exclude_emails = []
 
-    # Filter out previous winners
-    available_participants = participants_df[~participants_df['Email'].isin(exclude_emails)]
+    # Combine previous winners and absent participants to exclude from drawing
+    all_excluded_emails = list(set(exclude_emails + st.session_state.absent_participants))
+
+    # Filter out previous winners and absent participants
+    available_participants = participants_df[~participants_df['Email'].isin(all_excluded_emails)]
 
     if len(available_participants) < num_winners:
         st.error(f"No hay suficientes participantes disponibles. Solicitados: {num_winners}, Disponibles: {len(available_participants)}")
@@ -181,6 +197,56 @@ def delete_round(round_idx):
     # Remove the round configuration
     st.session_state.rounds.pop(round_idx)
 
+def mark_winner_absent(round_id, winner_index):
+    """Mark a winner as absent and redraw a replacement"""
+    if round_id not in st.session_state.drawn_winners:
+        return
+
+    winners = st.session_state.drawn_winners[round_id]
+    if winner_index >= len(winners):
+        return
+
+    # Get the winner to mark as absent
+    absent_winner = winners[winner_index]
+
+    # Check if the winner doesn't have the absent flag yet
+    if 'absent' not in absent_winner or not absent_winner['absent']:
+        # Mark as absent
+        absent_winner['absent'] = True
+
+        # Add to absent participants list if not already there
+        if absent_winner['Email'] not in st.session_state.absent_participants:
+            st.session_state.absent_participants.append(absent_winner['Email'])
+
+        # Find the corresponding round configuration
+        round_config = next((r for r in st.session_state.rounds if r['id'] == round_id), None)
+        if round_config:
+            # Try to draw a replacement winner
+            replacement = draw_winners(
+                st.session_state.participants,
+                1,
+                exclude_emails=st.session_state.all_winners
+            )
+
+            if replacement:
+                replacement_winner = replacement[0]
+                # Add a flag to identify it as a replacement
+                replacement_winner['is_replacement'] = True
+                # Store reference to the original absent winner
+                replacement_winner['replaced'] = absent_winner['Email']
+
+                # Add to global winners list
+                st.session_state.all_winners.append(replacement_winner['Email'])
+
+                # Add to the winners list for this round
+                winners.append(replacement_winner)
+
+                return True
+            else:
+                st.warning("No hay participantes disponibles para reemplazar al ganador ausente.")
+                return False
+    return False
+
 # Sidebar for configuration
 with st.sidebar:
     st.title("🎲 Configuración del Sorteo")
@@ -214,7 +280,21 @@ with st.sidebar:
     st.text(f"Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     if st.session_state.participants is not None:
         st.text(f"Participantes: {len(st.session_state.participants)}")
-    st.text(f"Ganadores totales: {len(st.session_state.all_winners)}")
+
+    # Count different types of winners
+    total_winners = len(st.session_state.all_winners)
+
+    # Calculate number of absent winners (those marked as absent)
+    absent_winners = len(st.session_state.absent_participants)
+
+    # Calculate final winners (total winners excluding absent ones)
+    final_winners = total_winners - absent_winners
+
+    # Display winner statistics with clearer differentiation
+    st.markdown("**Estadísticas de Ganadores**")
+    st.text(f"Total de ganadores sorteados: {total_winners}")
+    st.text(f"Ganadores ausentes: {absent_winners}")
+    st.text(f"Receptores finales de premios: {final_winners}")
 
 # Main content area
 st.title("🎉 Sorteo de Eventos")
@@ -316,23 +396,53 @@ else:
         # Display winners for this round
         if round_id in st.session_state.drawn_winners and st.session_state.drawn_winners[round_id]:
             st.subheader("Ganadores de esta ronda")
-            
+
             winners = st.session_state.drawn_winners[round_id]
-            cols = st.columns(min(3, len(winners)))
-            
-            for j, winner in enumerate(winners):
+            replacements = [w for w in winners if w.get('is_replacement')]
+            original_winners = [w for w in winners if not w.get('is_replacement')]
+
+            # Display original winners first, then replacements
+            all_display_winners = original_winners + replacements
+            cols = st.columns(min(3, len(all_display_winners)))
+
+            for j, winner in enumerate(all_display_winners):
                 with cols[j % len(cols)]:
-                    st.markdown(f"""
-                    <div class="winner-card">
+                    # Determine CSS class based on absent status
+                    card_class = "winner-card absent" if winner.get('absent') else "winner-card"
+
+                    # Build winner card HTML
+                    card_html = f"""
+                    <div class="{card_class}">
                         <h4>{winner['First Name']} {winner['Last Name']}</h4>
                         <p>{mask_email(winner['Email'])}</p>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    # Assign prize if available
-                    if j < len(round_config['prizes']):
-                        prize = round_config['prizes'][j]
+                    """
+
+                    # Add absent label if applicable
+                    if winner.get('absent'):
+                        card_html += '<p class="absent-label">Ausente</p>'
+
+                    # Add replacement info if applicable
+                    if winner.get('is_replacement'):
+                        replaced_email = winner.get('replaced', '')
+                        card_html += f'<p><small>Reemplazo para: {mask_email(replaced_email)}</small></p>'
+
+                    # Close the div
+                    card_html += '</div>'
+
+                    # Render the card
+                    st.markdown(card_html, unsafe_allow_html=True)
+
+                    # Assign prize if available and not a replacement
+                    prize_index = original_winners.index(winner) if winner in original_winners else -1
+                    if prize_index >= 0 and prize_index < len(round_config['prizes']):
+                        prize = round_config['prizes'][prize_index]
                         st.info(f"Premio: {prize['name']}")
+
+                    # Mark as absent button (show for any non-absent winner, including replacements)
+                    if not winner.get('absent'):
+                        if st.button("Marcar como ausente", key=f"mark_absent_{round_id}_{j}"):
+                            if mark_winner_absent(round_id, winners.index(winner)):
+                                st.experimental_rerun()
 
         st.markdown("---")
 
@@ -348,13 +458,40 @@ else:
                 winner_data = {
                     'Ronda': round_name,
                     'Nombre': f"{winner['First Name']} {winner['Last Name']}",
-                    'Email': mask_email(winner['Email'])
+                    'Email': mask_email(winner['Email']),
+                    'Estado': 'Ausente' if winner.get('absent') else 'Presente',
+                    'Tipo': 'Reemplazo' if winner.get('is_replacement') else 'Original'
                 }
+
+                # Add replacement info if applicable
+                if winner.get('is_replacement') and winner.get('replaced'):
+                    winner_data['Reemplazo para'] = mask_email(winner.get('replaced'))
+                else:
+                    winner_data['Reemplazo para'] = '-'
 
                 # Add prize info if available
                 round_config = next((r for r in st.session_state.rounds if r['id'] == round_id), None)
-                if round_config and i < len(round_config['prizes']):
-                    winner_data['Premio'] = round_config['prizes'][i]['name']
+                if round_config:
+                    # For replacements, find the prize of the original winner they replaced
+                    if winner.get('is_replacement') and winner.get('replaced'):
+                        # Find the original winner this replaced
+                        original_winners = [w for w in winners if not w.get('is_replacement')]
+                        for idx, orig_winner in enumerate(original_winners):
+                            if orig_winner.get('Email') == winner.get('replaced') and idx < len(round_config['prizes']):
+                                winner_data['Premio'] = round_config['prizes'][idx]['name']
+                                break
+                        else:
+                            winner_data['Premio'] = '-'
+                    # For original winners (not replacements)
+                    elif not winner.get('is_replacement'):
+                        original_winners = [w for w in winners if not w.get('is_replacement')]
+                        idx = original_winners.index(winner) if winner in original_winners else -1
+                        if idx >= 0 and idx < len(round_config['prizes']):
+                            winner_data['Premio'] = round_config['prizes'][idx]['name']
+                        else:
+                            winner_data['Premio'] = '-'
+                    else:
+                        winner_data['Premio'] = '-'
                 else:
                     winner_data['Premio'] = '-'
 
