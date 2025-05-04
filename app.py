@@ -6,6 +6,9 @@ import io
 import uuid
 from datetime import datetime
 
+# Constants to avoid duplication
+CHECKIN_DATE_COLUMN = 'Checkin Date (UTC)'
+
 def mask_email(email):
     """Mask email to protect privacy (e.g., j***e@d***n.com)"""
     if not email or '@' not in email:
@@ -109,7 +112,7 @@ def process_csv(uploaded_file, only_checkin=True):
 
         # Check for required columns
         expected_columns = [
-            ('Checkin Date (UTC)', 'checked_in_at'),
+            (CHECKIN_DATE_COLUMN, 'checked_in_at'),
             ('Email', 'email'),
             ('First Name', 'first_name'),
             ('Last Name', 'last_name')
@@ -133,8 +136,8 @@ def process_csv(uploaded_file, only_checkin=True):
 
         # Filter participants based on check-in status
         if only_checkin:
-            participants_df = participants_df[participants_df['Checkin Date (UTC)'].notna() &
-                                             (participants_df['Checkin Date (UTC)'] != '')]
+            participants_df = participants_df[participants_df[CHECKIN_DATE_COLUMN].notna() &
+                                             (participants_df[CHECKIN_DATE_COLUMN] != '')]
 
         # Filter out specific email domains if needed
         participants_df = participants_df[~participants_df['Email'].str.contains('bevylabs', case=False, na=False)]
@@ -364,7 +367,7 @@ else:
         # Create a display dataframe with masked emails
         display_df = st.session_state.participants.copy()
         display_df['Email'] = display_df['Email'].apply(mask_email)
-        st.dataframe(display_df[['First Name', 'Last Name', 'Email', 'Checkin Date (UTC)']])
+        st.dataframe(display_df[['First Name', 'Last Name', 'Email', CHECKIN_DATE_COLUMN]])
 
     # Display and configure rounds
     if not st.session_state.rounds:
@@ -450,10 +453,13 @@ else:
 
             # Display original winners first, then replacements
             all_display_winners = original_winners + replacements
-            cols = st.columns(min(3, len(all_display_winners)))
+
+            # Create the right number of columns based on number of winners
+            num_cols = min(3, len(all_display_winners))
+            cols = st.columns(num_cols)
 
             for j, winner in enumerate(all_display_winners):
-                with cols[j % len(cols)]:
+                with cols[j % num_cols]:
                     # Determine CSS class based on absent status
                     card_class = "winner-card absent" if winner.get('absent') else "winner-card"
 
@@ -500,7 +506,7 @@ else:
         for round_id, winners in st.session_state.drawn_winners.items():
             round_name = next((r['name'] for r in st.session_state.rounds if r['id'] == round_id), f"Ronda {round_id}")
 
-            for i, winner in enumerate(winners):
+            for winner in winners:
                 winner_data = {
                     'Ronda': round_name,
                     'Nombre': f"{winner['First Name']} {winner['Last Name']}",
