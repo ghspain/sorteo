@@ -197,6 +197,41 @@ def delete_round(round_idx):
     # Remove the round configuration
     st.session_state.rounds.pop(round_idx)
 
+def assign_prize(winner, winners, round_config):
+    """
+    Determine the prize for a winner based on their status (original or replacement).
+
+    Args:
+        winner: The winner record
+        winners: List of all winners in the round
+        round_config: Configuration for the round containing prizes
+
+    Returns:
+        str: Prize name or '-' if no prize is assigned
+    """
+    # Default value if no prize is found
+    prize_name = '-'
+
+    # No prize assignment possible if there's no round config or prizes
+    if not round_config or not round_config.get('prizes'):
+        return prize_name
+
+    # For replacements, find the prize of the original winner they replaced
+    if winner.get('is_replacement') and winner.get('replaced'):
+        # Find the original winner this replaced
+        original_winners = [w for w in winners if not w.get('is_replacement')]
+        for idx, orig_winner in enumerate(original_winners):
+            if orig_winner.get('Email') == winner.get('replaced') and idx < len(round_config['prizes']):
+                return round_config['prizes'][idx]['name']
+    # For original winners (not replacements)
+    elif not winner.get('is_replacement'):
+        original_winners = [w for w in winners if not w.get('is_replacement')]
+        idx = original_winners.index(winner) if winner in original_winners else -1
+        if idx >= 0 and idx < len(round_config['prizes']):
+            return round_config['prizes'][idx]['name']
+
+    return prize_name
+
 def mark_winner_absent(round_id, winner_index):
     """Mark a winner as absent and redraw a replacement"""
     if round_id not in st.session_state.drawn_winners:
@@ -433,10 +468,9 @@ else:
                     st.markdown(card_html, unsafe_allow_html=True)
 
                     # Assign prize if available and not a replacement
-                    prize_index = original_winners.index(winner) if winner in original_winners else -1
-                    if prize_index >= 0 and prize_index < len(round_config['prizes']):
-                        prize = round_config['prizes'][prize_index]
-                        st.info(f"Premio: {prize['name']}")
+                    prize_name = assign_prize(winner, winners, round_config)
+                    if prize_name != '-':
+                        st.info(f"Premio: {prize_name}")
 
                     # Mark as absent button (show for any non-absent winner, including replacements)
                     if not winner.get('absent'):
@@ -469,31 +503,8 @@ else:
                 else:
                     winner_data['Reemplazo para'] = '-'
 
-                # Add prize info if available
-                round_config = next((r for r in st.session_state.rounds if r['id'] == round_id), None)
-                if round_config:
-                    # For replacements, find the prize of the original winner they replaced
-                    if winner.get('is_replacement') and winner.get('replaced'):
-                        # Find the original winner this replaced
-                        original_winners = [w for w in winners if not w.get('is_replacement')]
-                        for idx, orig_winner in enumerate(original_winners):
-                            if orig_winner.get('Email') == winner.get('replaced') and idx < len(round_config['prizes']):
-                                winner_data['Premio'] = round_config['prizes'][idx]['name']
-                                break
-                        else:
-                            winner_data['Premio'] = '-'
-                    # For original winners (not replacements)
-                    elif not winner.get('is_replacement'):
-                        original_winners = [w for w in winners if not w.get('is_replacement')]
-                        idx = original_winners.index(winner) if winner in original_winners else -1
-                        if idx >= 0 and idx < len(round_config['prizes']):
-                            winner_data['Premio'] = round_config['prizes'][idx]['name']
-                        else:
-                            winner_data['Premio'] = '-'
-                    else:
-                        winner_data['Premio'] = '-'
-                else:
-                    winner_data['Premio'] = '-'
+                # Add prize info
+                winner_data['Premio'] = assign_prize(winner, winners, next((r for r in st.session_state.rounds if r['id'] == round_id), None))
 
                 all_winners_data.append(winner_data)
 
