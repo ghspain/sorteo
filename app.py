@@ -197,6 +197,25 @@ def delete_round(round_idx):
     # Remove the round configuration
     st.session_state.rounds.pop(round_idx)
 
+def get_prize_for_winner_index(index, round_config):
+    """
+    Helper function to retrieve prize for a winner based on their index.
+
+    Args:
+        index: The index position of the winner in the original winners list
+        round_config: Configuration for the round containing prizes
+
+    Returns:
+        str: Prize name or '-' if no prize is assigned
+    """
+    if not round_config or not round_config.get('prizes'):
+        return '-'
+
+    if index >= 0 and index < len(round_config['prizes']):
+        return round_config['prizes'][index]['name']
+
+    return '-'
+
 def assign_prize(winner, winners, round_config):
     """
     Determine the prize for a winner based on their status (original or replacement).
@@ -209,28 +228,21 @@ def assign_prize(winner, winners, round_config):
     Returns:
         str: Prize name or '-' if no prize is assigned
     """
-    # Default value if no prize is found
-    prize_name = '-'
-
-    # No prize assignment possible if there's no round config or prizes
-    if not round_config or not round_config.get('prizes'):
-        return prize_name
+    # Get list of original winners (non-replacements)
+    original_winners = [w for w in winners if not w.get('is_replacement')]
 
     # For replacements, find the prize of the original winner they replaced
     if winner.get('is_replacement') and winner.get('replaced'):
-        # Find the original winner this replaced
-        original_winners = [w for w in winners if not w.get('is_replacement')]
         for idx, orig_winner in enumerate(original_winners):
-            if orig_winner.get('Email') == winner.get('replaced') and idx < len(round_config['prizes']):
-                return round_config['prizes'][idx]['name']
+            if orig_winner.get('Email') == winner.get('replaced'):
+                return get_prize_for_winner_index(idx, round_config)
+
     # For original winners (not replacements)
     elif not winner.get('is_replacement'):
-        original_winners = [w for w in winners if not w.get('is_replacement')]
         idx = original_winners.index(winner) if winner in original_winners else -1
-        if idx >= 0 and idx < len(round_config['prizes']):
-            return round_config['prizes'][idx]['name']
+        return get_prize_for_winner_index(idx, round_config)
 
-    return prize_name
+    return '-'
 
 def mark_winner_absent(round_id, winner_index):
     """Mark a winner as absent and redraw a replacement"""
