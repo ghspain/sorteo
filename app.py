@@ -94,7 +94,7 @@ if 'absent_participants' not in st.session_state:
 def reset_session():
     """Reset the session completely"""
     st.session_state.participants = None
-    st.session_state.all_winners = []
+    st.session_state.all_winners = []  # Reset all winners list to prevent key errors when drawing replacements
     st.session_state.rounds = []
     st.session_state.session_id = str(uuid.uuid4())
     st.session_state.drawn_winners = {}
