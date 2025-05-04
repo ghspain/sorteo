@@ -7,23 +7,17 @@ Este archivo solo maneja la interfaz de usuario y delega la lógica
 a las capas de aplicación y dominio.
 """
 import streamlit as st
-import pandas as pd
-import csv
-import random
-import io
-import uuid
 import os
 from datetime import datetime
 
 # Importamos las clases de las diferentes capas
-from domain.models import Participant, Round, Prize
 from application.session_service import SessionService
 from application.participant_service import ParticipantService  
 from application.draw_service import DrawService
 from infrastructure.csv_repository import CSVRepository
 from presentation.ui_components import UIComponents
 from presentation.session_state_manager import SessionStateManager
-from utils.csv_privacy import anonymize_csv, check_gdpr_compliance
+from utils.csv_privacy import check_gdpr_compliance
 
 # Configuración de la página
 st.set_page_config(
