@@ -1,31 +1,35 @@
 #!/usr/bin/env python3
 
-# Set page configuration
 """
-Punto de entrada principal de la aplicación Streamlit de sorteos.
-Este archivo solo maneja la interfaz de usuario y delega la lógica
-a las capas de aplicación y dominio.
+Main Streamlit application for the GH Spain Raffles.
 """
-import streamlit as st
 import os
 from datetime import datetime
 
-# Importamos las clases de las diferentes capas
-from application.session_service import SessionService
-from application.participant_service import ParticipantService  
-from application.draw_service import DrawService
-from infrastructure.csv_repository import CSVRepository
-from presentation.ui_components import UIComponents
-from presentation.session_state_manager import SessionStateManager
-from utils.csv_privacy import check_gdpr_compliance
+import streamlit as st
 
-# Configuración de la página
+from application.participant_service import ParticipantService
+from application.raffle_service import RaffleService
+from application.giveaway_service import GiveawayService
+from infrastructure.csv_repository import CsvRepository
+from presentation.session_state_manager import SessionStateManager
+
+# Initialize session state using the manager (following SRP and DDD)
+session_manager = SessionStateManager()
+session_manager.initialize_session_state()
+
+# Page configuration
 st.set_page_config(
-    page_title="Sorteo de Eventos",
-    page_icon="🎫",
+    page_title="GH Spain Raffle App",
+    page_icon="🎟️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+# Initialize services with proper dependency injection
+participant_service = ParticipantService(CsvRepository(session_manager.get_pii_mode()))
+raffle_service = RaffleService()
+giveaway_service = GiveawayService()
 
 # CSS for making it look nicer
 st.markdown("""
@@ -56,161 +60,131 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-def mask_email(email):
-    """Mask email to protect privacy (e.g., j***e@d***n.com)"""
-    if not email or '@' not in email:
-        return email
-
-    local_part, domain_part = email.split('@')
-
-    # Handle the local part (username)
-    if len(local_part) > 2:
-        masked_local = local_part[0] + '*' * (len(local_part) - 2) + local_part[-1]
-    else:
-        masked_local = local_part[0] + '*' * (len(local_part) - 1) if len(local_part) > 0 else ''
-
-    # Handle the domain part
-    domain_name, *ext_parts = domain_part.split('.')
-    domain_ext = '.'.join(ext_parts)
-
-    if len(domain_name) > 1:
-        masked_domain = domain_name[0] + '*' * (len(domain_name) - 1)
-    else:
-        masked_domain = domain_name
-
-    return f"{masked_local}@{masked_domain}.{domain_ext}"
-
-# Inicializar servicios
-ui = UIComponents()
-state_manager = SessionStateManager()
-csv_repo = CSVRepository()
-participant_service = ParticipantService(csv_repo)
-session_service = SessionService()
-draw_service = DrawService()
-
-# Inicializar el estado de la sesión si no existe
-state_manager.initialize_session_state()
-
-# Sidebar para configuración
+# Sidebar for configuration
 with st.sidebar:
-    st.title("🎲 Configuración del Sorteo")
-    
+    st.title("🎲 Raffle Configuration")
+
     # File upload section
-    st.subheader("Subir lista de participantes")
-    uploaded_file = st.file_uploader("Subir CSV con los datos de los participantes", type=['csv'])
-    
-    only_checkin = st.checkbox("Solo participantes con check-in", value=True)
-    
+    st.subheader("Upload Participant List")
+    uploaded_file = st.file_uploader("Upload CSV with participant data", type=['csv'])
+
+    only_check_in = st.checkbox("Only participants with check-in", value=True)
+
     # Privacy settings
-    st.subheader("Configuración de privacidad")
+    st.subheader("Privacy Settings")
     pii_mode = st.radio(
-        "Modo de manejo de datos personales",
+        "Personal Data Handling Mode",
         [
-            CSVRepository.PII_MODE_ORIGINAL,
-            CSVRepository.PII_MODE_MASKED,
-            CSVRepository.PII_MODE_PSEUDONYMIZED
+            CsvRepository.PII_MODE_ORIGINAL,
+            CsvRepository.PII_MODE_MASKED,
+            CsvRepository.PII_MODE_PSEUDONYMIZED
         ],
         format_func=lambda x: {
-            CSVRepository.PII_MODE_ORIGINAL: "Original (sin protección)",
-            CSVRepository.PII_MODE_MASKED: "Enmascarado (protección básica)",
-            CSVRepository.PII_MODE_PSEUDONYMIZED: "Pseudonimizado (protección avanzada)"
+            CsvRepository.PII_MODE_ORIGINAL: "Original (no protection)",
+            CsvRepository.PII_MODE_MASKED: "Masked (basic protection)",
+            CsvRepository.PII_MODE_PSEUDONYMIZED: "Pseudonymized (advanced protection)"
         }.get(x)
     )
-    
+
     # Update PII mode if changed
-    if st.session_state.pii_mode != pii_mode:
-        st.session_state.pii_mode = pii_mode
+    if session_manager.get_pii_mode() != pii_mode:
+        session_manager.set_pii_mode(pii_mode)
         st.experimental_rerun()
-    
+
     if uploaded_file is not None:
-        if st.button("Procesar lista de participantes"):
-            participants = participant_service.process_csv(uploaded_file, only_checkin)
+        if st.button("Process Participant List"):
+            participants = participant_service.process_participants_file(uploaded_file.getvalue(), only_checked_in=only_check_in)
             if participants is not None:
-                state_manager.set_participants(participants)
-                st.success(f"Se han cargado {len(participants)} participantes válidos")
-        
+                session_manager.set_participants(participants)
+                st.success(f"{len(participants)} valid participants have been loaded")
+
+        # Display column mapping information for clarity
+        with st.expander("Column Mapping Information"):
+            st.write("""
+            The application handles various column naming formats:
+            - Check-in timestamps: 'Check-in Date (UTC)', 'checked_in_at', 'checkin_date', or 'checkin_time'
+            - Email: 'Email', 'email', 'email_address' or 'mail'
+            - First name: 'First Name', 'first_name', 'firstname', or 'name'
+            - Last name: 'Last Name', 'last_name', 'lastname', or 'surname'
+
+            All formats are normalized internally for consistent processing.
+            """)
+
         # GDPR compliance check
-        if st.button("Verificar cumplimiento GDPR"):
+        if st.button("Check GDPR Compliance"):
             try:
-                # Save the uploaded file temporarily
-                temp_file = "temp_upload.csv"
-                with open(temp_file, "wb") as f:
-                    f.write(uploaded_file.getvalue())
-                
-                # Check GDPR compliance
-                report = check_gdpr_compliance(temp_file)
-                
+                # Use the more secure method that handles temporary files properly
+                report = CsvRepository.check_gdpr_compliance_from_bytes(uploaded_file.getvalue())
+
                 # Display report
                 if report['compliant']:
-                    st.success("El archivo parece cumplir con GDPR")
+                    st.success("The file appears to comply with GDPR")
                 else:
-                    st.warning("El archivo tiene problemas de cumplimiento GDPR:")
+                    st.warning("The file has GDPR compliance issues:")
                     for issue in report['issues']:
                         st.warning(f"- {issue}")
-                
+
                 if report['recommendations']:
-                    st.info("Recomendaciones:")
+                    st.info("Recommendations:")
                     for rec in report['recommendations']:
                         st.info(f"- {rec}")
-                
-                # Remove temp file
-                os.remove(temp_file)
             except Exception as e:
-                st.error(f"Error al verificar el cumplimiento GDPR: {e}")
-    
+                st.error(f"Error checking GDPR compliance: {e}")
+
     # Round management section
-    st.subheader("Gestión de rondas")
-    if st.button("Añadir ronda de sorteo"):
-        session_service.add_round()
+    st.subheader("Round Management")
+    if st.button("Add Raffle Round"):
+        raffle_service.add_round()
 
     # Reset button at the bottom
-    if st.button("Reiniciar sesión de sorteo"):
-        state_manager.reset_session()
-        st.success("Sesión reiniciada correctamente")
-    
+    if st.button("Reset Raffle Session"):
+        session_manager.reset_session()
+        st.success("Raffle session successfully reset")
+
     # Session info
-    st.subheader("Información de sesión")
-    session_info = state_manager.get_session_info()
-    st.text(f"ID de sesión: {session_info['session_id'][:8]}")
-    st.text(f"Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    if session_info['participants'] is not None:
-        st.text(f"Participantes: {session_info['total_participants']}")
-    st.text(f"Ganadores totales: {session_info['total_winners']}")
-    st.text(f"Modo PII: {st.session_state.pii_mode}")
+    st.subheader("Session Information")
+    session_info = {
+        "session_id": session_manager.get_session_id(),
+        "total_participants": len(session_manager.get_participants()),
+        "total_winners": len(session_manager.get_winners()),
+        "pii_mode": session_manager.get_pii_mode()
+    }
+    st.text(f"Session ID: {session_info['session_id'][:8]}")
+    st.text(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    st.text(f"Participants: {session_info['total_participants']}")
+    st.text(f"Total Winners: {session_info['total_winners']}")
+    st.text(f"PII Mode: {session_info['pii_mode']}")
 
 # Main content area
-st.title("🎉 Sorteo de Eventos")
+st.title("🎉 GH Spain Raffle App")
 
 # Welcome message if no file is uploaded yet
-if state_manager.get_participants() is None:
-    ui.show_welcome_message()
-    
-    with st.expander("Formato de archivo esperado"):
+if not session_manager.get_participants():
+    st.write("Welcome to the GH Spain Raffle App! Please upload a participant list to get started.")
+
+    with st.expander("Expected File Format"):
         st.write("""
-        El archivo CSV debe contener al menos las siguientes columnas:
-        - 'Checkin Date (UTC)' o 'checked_in_at': Fecha de check-in del participante
-        - 'Email' o 'email': Correo electrónico del participante
-        - 'First Name' o 'first_name': Nombre del participante
-        - 'Last Name' o 'last_name': Apellido del participante
+        The CSV file must contain at least the following columns:
+        - 'Check-in Date (UTC)' or 'checked_in_at': Participant check-in date
+        - 'Email' or 'email': Participant email address
+        - 'First Name' or 'first_name': Participant first name
+        - 'Last Name' or 'last_name': Participant last name
         """)
 else:
     # Show participants summary
-    with st.expander("Resumen de Participantes"):
-        ui.show_participants_summary(state_manager.get_participants())
-    
+    with st.expander("Participant Summary"):
+        st.write(f"Total Participants: {len(session_manager.get_participants())}")
+
     # Display and configure rounds
-    rounds = state_manager.get_rounds()
+    rounds = session_manager.get_rounds()
     if not rounds:
-        st.warning("No hay rondas configuradas. Añade al menos una ronda para realizar el sorteo.")
-    
+        st.warning("No rounds configured. Add at least one round to proceed with the raffle.")
+
     for i, round_config in enumerate(rounds):
-        ui.render_round_section(
-            i, 
-            round_config, 
-            state_manager, 
-            session_service,
-            draw_service
-        )
-    
+        st.write(f"Round {i + 1}: {round_config}")
+
     # Summary of all winners
-    ui.render_winners_summary(state_manager)
+    st.write("Winners Summary:")
+    winners = session_manager.get_winners()
+    for winner in winners:
+        st.write(f"- {winner}")

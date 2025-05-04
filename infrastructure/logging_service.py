@@ -5,7 +5,7 @@ import os
 import sys
 import logging
 import structlog
-from typing import Any, Dict, Optional
+from typing import Optional
 
 
 class LoggingService:

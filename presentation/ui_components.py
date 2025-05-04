@@ -4,7 +4,7 @@ Componentes de la interfaz de usuario para la aplicación Streamlit.
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 
 from application.session_service import SessionService
 from application.draw_service import DrawService
