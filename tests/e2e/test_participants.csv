@@ -1,0 +1,6 @@
+Email,First Name,Last Name,Checkin Date (UTC)
+test1@example.com,John,Doe,2023-01-01 10:00:00
+test2@example.com,Jane,Smith,2023-01-01 10:15:00
+test3@example.com,Bob,Brown,
+test4@example.com,Alice,Johnson,2023-01-01 10:30:00
+test5@example.com,Charlie,Wilson,2023-01-01 10:45:00

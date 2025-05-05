@@ -243,15 +243,17 @@ class TestDrawService:
             {"Email": "winner3@example.com", "Name": "Winner 3"}
         ]
         
-        # Set up existing data with a dictionary we control
-        existing_winners = {1: [{"Email": "winner1@example.com", "Name": "Winner 1"}]}
-        existing_emails = ["winner1@example.com"]
-        
-        # Create a new MagicMock for session state
-        mock_session = MagicMock()
-        mock_session.__contains__ = lambda self, item: item in ["drawn_winners", "all_winners"]
-        mock_session.drawn_winners = existing_winners
-        mock_session.all_winners = existing_emails
+        # Create a custom mock session state class that behaves correctly
+        class CustomSessionState:
+            def __init__(self):
+                self.drawn_winners = {1: [{"Email": "winner1@example.com", "Name": "Winner 1"}]}
+                self.all_winners = ["winner1@example.com"]
+                self._items = {"drawn_winners": True, "all_winners": True}
+                
+            def __contains__(self, item):
+                return item in self._items
+
+        mock_session = CustomSessionState()
         
         # Mock session state properly
         with patch.object(st, 'session_state', mock_session):
@@ -259,7 +261,7 @@ class TestDrawService:
             draw_service.register_winners(round_id, winners)
             
             # Assert
-            # Now verify the state in the mock_session
+            # Check that both the old and new data are present
             assert 1 in mock_session.drawn_winners
             assert 2 in mock_session.drawn_winners
             assert mock_session.drawn_winners[2] == winners
@@ -273,18 +275,15 @@ class TestDrawService:
         round_id = 1
         winners = [{"Email": "winner1@example.com", "Name": "Winner 1"}]
         
-        # Create a custom mock that behaves like a dictionary for session state
-        class MockSessionState:
+        # Create a custom mock session state class that behaves correctly
+        class CustomSessionState:
             def __init__(self):
-                self._data = {"drawn_winners": {round_id: winners}}
+                self.drawn_winners = {1: winners}
             
             def __contains__(self, item):
-                return item in self._data
-            
-            def __getattr__(self, name):
-                return self._data.get(name)
-        
-        mock_session = MockSessionState()
+                return hasattr(self, item)
+
+        mock_session = CustomSessionState()
         
         # Mock session state properly
         with patch.object(st, 'session_state', mock_session):
@@ -298,20 +297,16 @@ class TestDrawService:
         """Test getting winners for a round that doesn't exist."""
         # Arrange
         round_id = 999
-        existing_round = 1
         
-        # Create a custom mock that behaves like a dictionary for session state
-        class MockSessionState:
+        # Create a custom mock session state class that behaves correctly
+        class CustomSessionState:
             def __init__(self):
-                self._data = {"drawn_winners": {existing_round: []}}
+                self.drawn_winners = {1: []}
             
             def __contains__(self, item):
-                return item in self._data
-            
-            def __getattr__(self, name):
-                return self._data.get(name)
-        
-        mock_session = MockSessionState()
+                return hasattr(self, item)
+
+        mock_session = CustomSessionState()
         
         # Mock session state properly
         with patch.object(st, 'session_state', mock_session):
@@ -326,20 +321,11 @@ class TestDrawService:
         # Arrange
         round_id = 1
         
-        # Create a custom mock that behaves like a dictionary for session state
-        class MockSessionState:
-            def __init__(self):
-                self._data = {}
-            
-            def __contains__(self, item):
-                return item in self._data
-            
-            def __getattr__(self, name):
-                return self._data.get(name)
-        
-        mock_session = MockSessionState()
-        
         # Mock session state properly
+        mock_session = MagicMock()
+        # Ensure 'drawn_winners' is not in session_state
+        mock_session.__contains__.side_effect = lambda x: x != "drawn_winners"
+        
         with patch.object(st, 'session_state', mock_session):
             # Act
             result = draw_service.get_winners_for_round(round_id)
@@ -352,18 +338,15 @@ class TestDrawService:
         # Arrange
         emails = ["winner1@example.com", "winner2@example.com"]
         
-        # Create a custom mock that behaves like a dictionary for session state
-        class MockSessionState:
+        # Create a custom mock session state class that behaves correctly
+        class CustomSessionState:
             def __init__(self):
-                self._data = {"all_winners": emails}
+                self.all_winners = emails
             
             def __contains__(self, item):
-                return item in self._data
-            
-            def __getattr__(self, name):
-                return self._data.get(name)
-        
-        mock_session = MockSessionState()
+                return hasattr(self, item)
+
+        mock_session = CustomSessionState()
         
         # Mock session state properly
         with patch.object(st, 'session_state', mock_session):
@@ -376,18 +359,9 @@ class TestDrawService:
     def test_get_all_winner_emails_no_session_state(self, draw_service):
         """Test getting all winner emails when session state doesn't have winners."""
         # Arrange
-        # Create a custom mock that behaves like a dictionary for session state
-        class MockSessionState:
-            def __init__(self):
-                self._data = {}
-            
-            def __contains__(self, item):
-                return item in self._data
-            
-            def __getattr__(self, name):
-                return self._data.get(name)
-        
-        mock_session = MockSessionState()
+        # Create mock session without 'all_winners'
+        mock_session = MagicMock()
+        mock_session.__contains__.side_effect = lambda x: x != "all_winners"
         
         # Mock session state properly
         with patch.object(st, 'session_state', mock_session):

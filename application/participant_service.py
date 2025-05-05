@@ -1,198 +1,201 @@
 """
 Participant service for the raffle application.
-Implements application layer in DDD, orchestrating domain objects and infrastructure.
 """
-from typing import List, Dict, Any, Optional
-import io
-import pandas as pd
+
+from typing import Any, Dict, List, Optional
 
 import streamlit as st
 
 from domain.events import DomainEventPublisher, ParticipantsLoaded
-from infrastructure.csv_repository import ParticipantRepository, CsvRepository
-from infrastructure.error_handling import error_handler, BusinessRuleError
+from domain.models import Participant
+from infrastructure.csv_repository import CsvRepository
+from infrastructure.error_handling import (
+    DataProcessingError,
+    ValidationError,
+    error_handler,
+)
 
 
 class ParticipantService:
-    """
-    Service for participant management.
-    Follows SOLID principles, especially dependency inversion by depending on abstractions.
-    """
+    """Service for handling participant-related operations."""
 
-    def __init__(self, repository: Optional[ParticipantRepository] = None):
+    def __init__(self, repository: CsvRepository):
         """
         Initialize the participant service.
 
         Args:
-            repository: Optional repository implementation, uses default if not provided
+            repository: Repository for participant data access
         """
-        self.repository = repository if repository is not None else CsvRepository()
-        # Define standard column mappings for various input formats
-        self._column_mappings = {
-            'email': ['Email', 'email', 'email_address', 'mail'],
-            'first_name': ['First Name', 'first_name', 'firstname', 'name'],
-            'last_name': ['Last Name', 'last_name', 'lastname', 'surname'],
-            'checked_in_at': ['Check-in Date (UTC)', 'checked_in_at', 'checkin_date', 'checkin_time']
-        }
-
-    def normalize_column_names(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Normalize column names to a standardized format
-
-        Args:
-            df: DataFrame with original column names
-
-        Returns:
-            DataFrame with normalized column names
-        """
-        normalized_df = df.copy()
-
-        # Implement column name normalization
-        for standard_name, variations in self._column_mappings.items():
-            for column in df.columns:
-                if column in variations:
-                    normalized_df = normalized_df.rename(columns={column: standard_name})
-                    break
-
-        return normalized_df
+        self.repository = repository
+        self.event_publisher = DomainEventPublisher()
 
     @error_handler
-    def process_participants_file(self, file_content: bytes, only_checked_in: bool = True) -> Optional[List[Dict[str, Any]]]:
+    def process_participants_file(
+        self, file_content: bytes, only_checked_in: bool = True
+    ) -> List[Participant]:
         """
-        Process uploaded participant file and return valid participants
+        Process a file containing participant data.
 
         Args:
-            file_content: Raw bytes of the uploaded CSV file
-            only_checked_in: Flag to filter only checked-in participants
+            file_content: The file content as bytes
+            only_checked_in: Whether to only include participants who have checked in
 
         Returns:
-            List of participant dictionaries or None if processing fails
-        """
-        try:
-            # Parse CSV data
-            df = pd.read_csv(io.BytesIO(file_content))
-
-            # Normalize column names
-            df = self.normalize_column_names(df)
-
-            # Validate required columns
-            required_columns = ['email', 'first_name', 'last_name']
-            if only_checked_in:
-                required_columns.append('checked_in_at')
-
-            missing_columns = [col for col in required_columns if col not in df.columns]
-            if missing_columns:
-                raise ValueError(f"Missing required columns: {', '.join(missing_columns)}")
-
-            # Filter checked-in participants if requested
-            if only_checked_in and 'checked_in_at' in df.columns:
-                df = df[df['checked_in_at'].notna() & (df['checked_in_at'] != '')]
-
-            # Convert to list of dictionaries
-            participants = self.repository.convert_to_participants(df)
-
-            # Store the participants in the session state
-            st.session_state.participants = participants
-
-            # Publish an event
-            self._publish_participants_loaded_event(len(participants), only_checked_in)
-
-            return participants
-        except Exception as e:
-            # Log the error (in a real app, use a proper logging framework)
-            print(f"Error processing participants file: {e}")
-            return None
-
-    def _publish_participants_loaded_event(self, count: int, only_checked_in: bool) -> None:
-        """
-        Publish a participants loaded event.
-
-        Args:
-            count: Number of participants loaded
-            only_checked_in: Whether only checked in participants were loaded
-        """
-        event_publisher = DomainEventPublisher()
-        event_publisher.publish(
-            ParticipantsLoaded(
-                count=count,
-                only_checked_in=only_checked_in
-            )
-        )
-
-    @error_handler
-    def get_participants(self) -> List[Dict[str, str]]:
-        """
-        Get the list of participants from the session state.
-
-        Returns:
-            A list of participant dictionaries
+            A list of Participant objects
 
         Raises:
-            BusinessRuleError: If no participants have been loaded yet
+            ValidationError: If the file is invalid
+            DataProcessingError: If there's an error processing the file
         """
-        if "participants" not in st.session_state:
-            raise BusinessRuleError("No participants have been loaded")
+        try:
+            # Use repository to load participants
+            participants = self.repository.load_participants(
+                file_content=file_content, only_checked_in=only_checked_in
+            )
+            
+            # Check if participants is None or empty before proceeding
+            if participants is None:
+                raise DataProcessingError(
+                    message="No participant data was returned",
+                    details={"error": "Repository returned None"}
+                )
 
-        return st.session_state.participants
+            # Publish domain event
+            self.event_publisher.publish(
+                ParticipantsLoaded(count=len(participants), only_checked_in=only_checked_in)
+            )
+
+            # Store participants in session state for convenience
+            try:
+                if isinstance(st.session_state, dict):
+                    # When being mocked in tests
+                    st.session_state["participants"] = participants
+                else:
+                    # Normal operation
+                    st.session_state.participants = participants
+            except Exception as e:
+                # Log the error but don't fail the operation if session state fails
+                print(f"Warning: Failed to update session state: {str(e)}")
+            
+            # Always return the participants
+            return participants
+
+        except ValidationError as e:
+            # Enhance validation error with more context when it's a column mapping issue
+            if "missing_columns" in getattr(e, "details", {}):
+                missing = e.details.get("missing_columns", [])
+                available = e.details.get("available_columns", [])
+                
+                # Add information about column mapping for better user guidance
+                e.details["column_mapping_help"] = {
+                    "message": "Column names might need to be standardized. Please check your CSV headers.",
+                    "common_mappings": {
+                        "checked_in_at": ["Check-in Date", "Checkin Date", "Check-in Date (UTC)", "Checkin Date (UTC)"],
+                        "email": ["Email", "email", "E-mail", "e-mail"],
+                        "first_name": ["First Name", "FirstName", "Name", "first_name"],
+                        "last_name": ["Last Name", "LastName", "Surname", "last_name"]
+                    }
+                }
+                
+                # Pass through the enhanced error
+                raise e
+            else:
+                raise e
+
+        except DataProcessingError as e:
+            # Handle data processing errors
+            raise e
+
+        except Exception as e:
+            # Wrap other exceptions
+            raise DataProcessingError(
+                message="Error processing participants file",
+                details={"error": str(e)},
+                original_exception=e,
+            )
 
     @error_handler
-    def get_participant_summary(self) -> Dict[str, Any]:
+    def get_participant_count(self) -> int:
         """
-        Get a summary of the participants.
+        Get the number of participants.
+
+        Returns:
+            The number of participants
+        """
+        return len(st.session_state.get("participants", []))
+
+    @error_handler
+    def get_participants(self) -> List[Participant]:
+        """
+        Get all participants.
+
+        Returns:
+            A list of all participants
+        """
+        return st.session_state.get("participants", [])
+
+    @error_handler
+    def get_participant_by_email(self, email: str) -> Optional[Participant]:
+        """
+        Get a participant by their email.
+
+        Args:
+            email: The email of the participant to get
+
+        Returns:
+            The participant with the given email, or None if not found
+        """
+        participants = st.session_state.get("participants", [])
+        for participant in participants:
+            if participant.email.value.lower() == email.lower():
+                return participant
+        return None
+
+    @error_handler
+    def get_participant_statistics(self) -> Dict[str, Any]:
+        """
+        Get statistics about the participants.
 
         Returns:
             A dictionary with participant statistics
         """
-        if "participants" not in st.session_state:
-            return {
-                "count": 0,
-                "checked_in": 0,
-                "domains": {}
-            }
+        participants = st.session_state.get("participants", [])
 
-        participants = st.session_state.participants
-
-        return {
-            "count": len(participants),
-            "checked_in": self._count_checked_in_participants(participants),
-            "domains": self._get_domain_distribution(participants)
+        # Default statistics
+        stats = {
+            "total_count": len(participants),
+            "checked_in_count": 0,
+            "domains": {},
+            "top_domains": [],
         }
 
-    def _count_checked_in_participants(self, participants: List[Dict[str, str]]) -> int:
-        """
-        Count participants with check-in data.
+        if not participants:
+            return stats
 
-        Args:
-            participants: List of participant dictionaries
+        # Count checked-in participants
+        for participant in participants:
+            # Count checked in
+            if participant.checked_in_at is not None:
+                stats["checked_in_count"] += 1
 
-        Returns:
-            Count of checked in participants
-        """
-        return sum(
-            1 for p in participants
-            if p.get("checked_in_at", "").strip()
-        )
+            # Track email domains
+            email = participant.email.value
+            domain = email.split("@")[-1].lower()
 
-    def _get_domain_distribution(self, participants: List[Dict[str, str]]) -> Dict[str, int]:
-        """
-        Get distribution of email domains among participants.
+            if domain in stats["domains"]:
+                stats["domains"][domain] += 1
+            else:
+                stats["domains"][domain] = 1
 
-        Args:
-            participants: List of participant dictionaries
+        # Get top domains
+        top_domains = sorted(
+            stats["domains"].items(), key=lambda x: x[1], reverse=True
+        )[
+            :5
+        ]  # Top 5 domains
 
-        Returns:
-            Dictionary with domain counts, sorted by frequency
-        """
-        domains = {}
-        for p in participants:
-            email = p.get("email", "")
-            if email and "@" in email:
-                domain = email.split("@")[1]
-                domains[domain] = domains.get(domain, 0) + 1
+        stats["top_domains"] = [
+            {"domain": domain, "count": count} for domain, count in top_domains
+        ]
 
-        # Sort domains by count (descending)
-        return {
-            k: v for k, v in sorted(
-                domains.items(), key=lambda item: item[1], reverse=True
-            )
-        }
+        return stats

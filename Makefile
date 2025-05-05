@@ -6,7 +6,10 @@ CONTAINER_NAME = ghspain-sorteo-app
 build:
 	docker build -t $(IMAGE_NAME) .
 
-run: build
+run-watch: stop build
+	docker run --name $(CONTAINER_NAME) -p 8501:8501 -v $(shell pwd):/app $(IMAGE_NAME) streamlit run app.py --server.port 8501
+
+run: stop build
 	docker run -d --name $(CONTAINER_NAME) -p 8501:8501 $(IMAGE_NAME)
 
 clean:

@@ -292,11 +292,56 @@ presentation/                 # Presentation layer (UI)
   ui_components.py            # UI components
 tests/                        # Test suite
   e2e/                        # End-to-end tests
+    test_raffle_process.py    # Tests for the complete raffle workflow
   integration/                # Integration tests
+    test_csv_import.py        # Tests for CSV data import
+    test_draw_service.py      # Tests for draw service
   unit/                       # Unit tests
+run_tests.sh                  # Script to run tests in virtual environment
 translations/                 # Translation files
   en/                         # English translations
   es/                         # Spanish translations
+```
+
+## Testing
+
+The application includes a comprehensive test suite with unit, integration, and end-to-end (e2e) tests.
+
+### Running Tests
+
+There's a convenient script that sets up a virtual environment and runs the tests:
+
+```bash
+# Make the script executable
+chmod +x run_tests.sh
+
+# Run the tests
+./run_tests.sh
+```
+
+The script will:
+1. Create a Python virtual environment if it doesn't exist
+2. Install all required dependencies
+3. Run unit and integration tests automatically
+4. Optionally run end-to-end tests (requires the Streamlit app to be running)
+
+### Manual Test Execution
+
+If you prefer to run tests manually:
+
+#### Using the virtual environment
+
+```bash
+# Create and activate virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows use `venv\Scripts\activate`
+
+# Install dependencies
+pip install -r requirements.txt 
+
+# Run tests
+pytest tests/unit/ tests/integration/ -v  # Unit and integration tests
+pytest tests/e2e/ -v  # End-to-end tests (requires running Streamlit app)
 ```
 
 ## License

@@ -5,71 +5,60 @@ import streamlit as st
 import uuid
 from typing import Dict, List, Any, Optional
 from datetime import datetime
+from domain.models import Participant
+from domain.constants import PiiMode
 
 
 class SessionStateManager:
-    """Gestiona el estado de la sesión de la aplicación."""
-
-    # PII handling mode constants to avoid magic strings
-    PII_MODE_ORIGINAL = "original"      # Keep PII as is
-    PII_MODE_MASKED = "masked"          # Mask PII in display outputs
-    PII_MODE_PSEUDONYMIZED = "pseudonymized"  # Replace PII with pseudonyms
+    """Manager for handling session state in Streamlit."""
 
     def initialize_session_state(self) -> None:
-        """Initializes all necessary state variables."""
-        if 'participants' not in st.session_state:
-            st.session_state.participants = None
-        if 'all_winners' not in st.session_state:
-            st.session_state.all_winners = []  # List to store all winners
-        if 'rounds' not in st.session_state:
-            st.session_state.rounds = []  # List to store round configurations
-        if 'winners' not in st.session_state:
-            st.session_state.winners = []  # For UI display
-        if 'session_id' not in st.session_state:
-            # Use UUID instead of timestamp for better uniqueness guarantees
+        """Initialize the session state with default values."""
+        if "participants" not in st.session_state:
+            st.session_state.participants = []
+        if "rounds" not in st.session_state:
+            st.session_state.rounds = []
+        if "winners" not in st.session_state:
+            st.session_state.winners = []
+        if "pii_mode" not in st.session_state:
+            st.session_state.pii_mode = PiiMode.MASKED
+        if "session_id" not in st.session_state:
             st.session_state.session_id = str(uuid.uuid4())
         if 'drawn_winners' not in st.session_state:
-            st.session_state.drawn_winners = {}  # Dictionary to store winners by round
-        if 'pii_mode' not in st.session_state:
-            st.session_state.pii_mode = self.PII_MODE_MASKED
+            st.session_state.drawn_winners = {}
 
     def reset_session(self) -> None:
-        """Reinicia completamente el estado de la sesión."""
-        st.session_state.participants = None
-        st.session_state.all_winners = []
+        """Reset the session state."""
+        st.session_state.participants = []
         st.session_state.rounds = []
         st.session_state.winners = []
-        # Generate a new UUID when resetting the session
+        # Generate new session ID
         st.session_state.session_id = str(uuid.uuid4())
         st.session_state.drawn_winners = {}
-        # Keep PII mode as it's a user preference
 
-    def set_participants(self, participants: List[Dict[str, Any]]) -> None:
-        """
-        Establece la lista de participantes en el estado de la sesión.
+    def set_participants(self, participants: List[Participant]) -> None:
+        """Set the list of participants.
 
         Args:
-            participants: Lista de diccionarios con los datos de los participantes
+            participants: List of participants
         """
         st.session_state.participants = participants
 
-    def get_participants(self) -> Optional[List[Dict[str, Any]]]:
-        """
-        Obtiene la lista de participantes del estado de la sesión.
+    def get_participants(self) -> Optional[List[Participant]]:
+        """Get the list of participants.
 
         Returns:
-            Lista de participantes o None si no hay participantes
+            List of participants
         """
-        return st.session_state.participants if 'participants' in st.session_state else None
+        return st.session_state.get("participants", [])
 
     def get_rounds(self) -> List[Dict[str, Any]]:
-        """
-        Obtiene la lista de rondas del estado de la sesión.
+        """Get the list of rounds.
 
         Returns:
-            Lista de configuraciones de rondas
+            List of rounds
         """
-        return st.session_state.rounds if 'rounds' in st.session_state else []
+        return st.session_state.get("rounds", [])
 
     def get_winners(self, round_id: int) -> List[Dict[str, Any]]:
         """
@@ -152,45 +141,36 @@ class SessionStateManager:
 
         return all_winners_data
 
-    def set_pii_mode(self, pii_mode: str) -> bool:
-        """
-        Sets the PII handling mode.
+    def set_pii_mode(self, mode: str) -> None:
+        """Set the PII mode.
 
         Args:
-            pii_mode: The PII handling mode to use
-
-        Returns:
-            True if the mode was changed, False otherwise
+            mode: PII mode
         """
-        if pii_mode not in (
-            self.PII_MODE_ORIGINAL,
-            self.PII_MODE_MASKED,
-            self.PII_MODE_PSEUDONYMIZED
+        if mode in (
+            PiiMode.ORIGINAL,
+            PiiMode.MASKED,
+            PiiMode.PSEUDONYMIZED
         ):
-            return False
-
-        if st.session_state.pii_mode != pii_mode:
-            st.session_state.pii_mode = pii_mode
-            return True
-        return False
+            st.session_state.pii_mode = mode
 
     def get_pii_mode(self) -> str:
-        """
-        Gets the current PII handling mode.
+        """Get the PII mode.
 
         Returns:
-            The current PII handling mode
+            PII mode
         """
-        return st.session_state.pii_mode if 'pii_mode' in st.session_state else self.PII_MODE_MASKED
+        return st.session_state.get("pii_mode", PiiMode.MASKED)
 
     def get_session_id(self) -> str:
-        """
-        Gets the current session ID.
+        """Get the session ID.
 
         Returns:
-            The current session ID
+            Session ID
         """
-        return st.session_state.session_id if 'session_id' in st.session_state else ""
+        if "session_id" not in st.session_state:
+            st.session_state.session_id = str(uuid.uuid4())
+        return st.session_state.session_id
 
     def get_all_winners(self) -> List[Dict[str, Any]]:
         """

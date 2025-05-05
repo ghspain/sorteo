@@ -1,0 +1,21 @@
+FROM mcr.microsoft.com/playwright/python:latest
+
+WORKDIR /app
+
+# Copy requirements
+COPY requirements.txt .
+
+# Install dependencies
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir pytest-xdist pytest-cov
+
+# Set up environment
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
+# Make sure we have the latest version of Playwright browsers
+RUN python -m playwright install --with-deps chromium
+
+# Default command (will be used if no command is passed)
+CMD ["pytest", "-xvs"]

@@ -3,14 +3,13 @@
 """
 Main Streamlit application for the GH Spain Raffles.
 """
-import os
 from datetime import datetime
 
 import streamlit as st
 
 from application.participant_service import ParticipantService
+from application.session_service import SessionService
 from application.raffle_service import RaffleService
-from application.giveaway_service import GiveawayService
 from infrastructure.csv_repository import CsvRepository
 from presentation.session_state_manager import SessionStateManager
 
@@ -28,8 +27,8 @@ st.set_page_config(
 
 # Initialize services with proper dependency injection
 participant_service = ParticipantService(CsvRepository(session_manager.get_pii_mode()))
-raffle_service = RaffleService()
-giveaway_service = GiveawayService()
+session_service = SessionService()
+raffle_service = RaffleService(session_service)
 
 # CSS for making it look nicer
 st.markdown("""
@@ -120,14 +119,16 @@ with st.sidebar:
                 if report['compliant']:
                     st.success("The file appears to comply with GDPR")
                 else:
-                    st.warning("The file has GDPR compliance issues:")
+                    issues = ""
                     for issue in report['issues']:
-                        st.warning(f"- {issue}")
+                        issues += f"- {issue}\n"
+                    st.warning("The file has GDPR compliance issues:" + "\n" + issues, icon="⚠️")
 
                 if report['recommendations']:
-                    st.info("Recommendations:")
+                    recommendations = ""
                     for rec in report['recommendations']:
-                        st.info(f"- {rec}")
+                        recommendations += f"- {rec}\n"
+                    st.info("Recommendations:" + "\n" + recommendations, icon="ℹ️")
             except Exception as e:
                 st.error(f"Error checking GDPR compliance: {e}")
 
@@ -146,7 +147,7 @@ with st.sidebar:
     session_info = {
         "session_id": session_manager.get_session_id(),
         "total_participants": len(session_manager.get_participants()),
-        "total_winners": len(session_manager.get_winners()),
+        "total_winners": len(raffle_service.get_all_winners()),
         "pii_mode": session_manager.get_pii_mode()
     }
     st.text(f"Session ID: {session_info['session_id'][:8]}")
@@ -181,10 +182,35 @@ else:
         st.warning("No rounds configured. Add at least one round to proceed with the raffle.")
 
     for i, round_config in enumerate(rounds):
-        st.write(f"Round {i + 1}: {round_config}")
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.subheader(f"Round {i + 1}: {round_config.get('name', 'Prize Round')}")
+
+        # Display existing winners for this round if any
+        round_winners = raffle_service.get_winners_for_round(round_config['id'])
+        if round_winners:
+            st.write(f"Winners for Round {i + 1}:")
+            for winner in round_winners:
+                st.write(f"- {winner.get('First Name', '')} {winner.get('Last Name', '')} ({winner.get('Email', '')})")
+        else:
+            # Only show draw button if there are no winners yet
+            with col2:
+                if st.button(f"Draw Winner(s) for Round {i + 1}"):
+                    winners = raffle_service.select_winners(
+                        round_config['id'],
+                        session_manager.get_participants(),
+                        round_config.get('num_winners', 1)
+                    )
+                    if winners:
+                        st.success(f"Selected {len(winners)} winners!")
+                    else:
+                        st.error("No winners could be selected. Check participant list.")
 
     # Summary of all winners
-    st.write("Winners Summary:")
-    winners = session_manager.get_winners()
-    for winner in winners:
-        st.write(f"- {winner}")
+    st.subheader("Winners Summary:")
+    winners = raffle_service.get_all_winners()
+    if winners:
+        for winner in winners:
+            st.write(f"- {winner.get('First Name', '')} {winner.get('Last Name', '')} ({winner.get('Email', '')})")
+    else:
+        st.write("No winners yet. Draw winners from the rounds above to see them here.")

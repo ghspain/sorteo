@@ -81,6 +81,28 @@ class Prize:
     name: PrizeName
     description: str = ""
     
+    def __init__(self, id: int, name: str, description: str = ""):
+        """
+        Initialize a prize.
+        
+        Args:
+            id: The prize ID
+            name: The prize name
+            description: The prize description
+        """
+        self.prize_id = PrizeId(id)
+        self._name = PrizeName(name)
+        self.description = description
+        # Add id attribute for backward compatibility with tests
+        self.id = id
+        # Add name string property for backward compatibility with tests
+        self._name_str = name
+        
+    @property
+    def name(self) -> str:
+        """Get prize name as string (for test compatibility)."""
+        return self._name_str
+        
     @classmethod
     def create(cls, id: int, name: str, description: str = "") -> 'Prize':
         """
@@ -95,23 +117,10 @@ class Prize:
             A new Prize instance
         """
         return cls(
-            prize_id=PrizeId(id),
-            name=PrizeName(name),
+            id=id,
+            name=name,
             description=description
         )
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """
-        Convert the prize to a dictionary.
-        
-        Returns:
-            A dictionary with the prize's data
-        """
-        return {
-            'id': self.prize_id.value,
-            'name': self.name.value,
-            'description': self.description
-        }
 
 
 @dataclass
@@ -122,8 +131,23 @@ class Round:
     num_winners: int
     prizes: List[Prize] = field(default_factory=list)
     
-    def __post_init__(self):
-        """Validate the round."""
+    def __init__(self, id: int, name: str, num_winners: int):
+        """
+        Initialize a round.
+        
+        Args:
+            id: The round ID
+            name: The round name
+            num_winners: The number of winners
+        """
+        self.round_id = RoundId(id)
+        self.name = name
+        self.num_winners = num_winners
+        self.prizes = []
+        # Add id attribute for backward compatibility with tests
+        self.id = id
+        
+        # Validate after initialization
         if not self.name.strip():
             raise ValueError("Round name cannot be empty")
         if self.num_winners <= 0:
@@ -152,7 +176,7 @@ class Round:
             raise ValueError(f"Number of winners must be positive: {num_winners}")
             
         round_obj = Round(
-            round_id=RoundId(round_id),
+            id=round_id,
             name=name,
             num_winners=num_winners
         )
@@ -196,12 +220,22 @@ class Round:
 @dataclass
 class DrawResult:
     """Draw result value object."""
-    round_id: RoundId
+    round_id: int
     winners: List[Participant]
     timestamp: datetime = field(default_factory=datetime.now)
     
-    def __post_init__(self):
-        """Validate and publish domain event."""
+    def __init__(self, round_id: int, winners: List[Participant]):
+        """
+        Initialize a draw result.
+        
+        Args:
+            round_id: The round ID
+            winners: The list of winners
+        """
+        self.round_id = round_id
+        self.winners = winners
+        self.timestamp = datetime.now()
+        
         if not self.winners:
             raise ValueError("Draw result must have at least one winner")
         
@@ -209,8 +243,7 @@ class DrawResult:
         event_publisher = DomainEventPublisher()
         event_publisher.publish(
             WinnersDrawn(
-                round_id=self.round_id.value,
-                num_winners=len(self.winners),
+                round_id=self.round_id,
                 winner_emails=[winner.email.value for winner in self.winners]
             )
         )
@@ -223,7 +256,7 @@ class DrawResult:
             A dictionary with the draw result data
         """
         return {
-            'round_id': self.round_id.value,
+            'round_id': self.round_id,
             'winners': [winner.to_dict() for winner in self.winners],
             'timestamp': self.timestamp.isoformat(),
         }

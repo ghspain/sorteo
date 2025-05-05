@@ -33,18 +33,41 @@ def mask_pii(text: str, mask_char: str = '*') -> str:
     if not text:
         return text
         
-    # Mask email addresses - keep domain for debugging but mask username
+    # Special handling for full email addresses
+    if '@' in text and len(text.split('@')) == 2 and not ' ' in text:
+        # Direct email handling
+        username, domain = text.split('@')
+        if len(username) > 1:
+            # Keep first and last letter, mask everything in between
+            masked = username[0] + mask_char * (len(username) - 2) + username[-1]
+            return masked + '@' + domain
+        elif len(username) == 1:
+            # If username is just one character, keep it
+            return username + '@' + domain
+        else:
+            # Handle empty username
+            return mask_char + '@' + domain
+    
+    # Mask email addresses - keep first and last letter of username, keep domain
     def mask_email(match):
         email = match.group(0)
         parts = email.split('@')
         if len(parts) == 2:
             username = parts[0]
             domain = parts[1]
-            if len(username) > 2:
+            
+            if len(username) > 1:
+                # Keep first and last letter, mask everything in between
                 masked = username[0] + mask_char * (len(username) - 2) + username[-1]
+            elif len(username) == 1:
+                # If username is just one character, keep it
+                masked = username
             else:
-                masked = mask_char * len(username)
+                # Handle empty username
+                masked = mask_char
+                
             return masked + '@' + domain
+            
         return mask_char * len(email)
     
     # Mask phone numbers - keep last 4 digits
@@ -102,13 +125,13 @@ def is_personal_data(data_type: str) -> bool:
         True if the data type is personal data, False otherwise
     """
     personal_data_types = {
-        'email', 'name', 'full_name', 'first_name', 'last_name',
-        'address', 'phone', 'phone_number', 'mobile', 'mobile_number',
-        'date_of_birth', 'dob', 'birth_date', 'gender',
-        'ip_address', 'id', 'user_id', 'account_id',
-        'ssn', 'social_security', 'passport', 'id_number',
+        'email', 'name', 'fullname', 'firstname', 'lastname', 'full_name', 'first_name', 'last_name',
+        'address', 'phone', 'phone_number', 'phonenumber', 'mobile', 'mobile_number', 'mobilenumber',
+        'date_of_birth', 'dateofbirth', 'dob', 'birth_date', 'birthdate', 'gender',
+        'ip_address', 'ipaddress', 'id', 'user_id', 'userid', 'account_id', 'accountid',
+        'ssn', 'social_security', 'socialsecurity', 'passport', 'id_number', 'idnumber',
         'location', 'geo', 'gps', 'coordinates',
-        'credit_card', 'bank_account', 'iban'
+        'credit_card', 'creditcard', 'bank_account', 'bankaccount', 'iban'
     }
     
     return data_type.lower().replace('_', '') in personal_data_types
@@ -126,10 +149,10 @@ def is_special_category_data(data_type: str) -> bool:
         True if the data type is special category, False otherwise
     """
     special_categories = {
-        'race', 'ethnicity', 'political_opinions', 'political', 
+        'race', 'ethnicity', 'political_opinions', 'politicalopinions', 'political',
         'religion', 'religious', 'beliefs', 'philosophical',
-        'trade_union', 'union_membership', 'genetic', 'biometric',
-        'health', 'medical', 'sex_life', 'sexual_orientation',
+        'trade_union', 'tradeunion', 'union_membership', 'unionmembership', 'genetic', 'biometric',
+        'health', 'medical', 'sex_life', 'sexlife', 'sexual_orientation', 'sexualorientation',
         'sexual', 'criminal', 'offence', 'conviction'
     }
     
