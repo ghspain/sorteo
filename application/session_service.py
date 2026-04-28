@@ -26,6 +26,7 @@ class SessionService:
             st.session_state.rounds = []
             st.session_state.drawn_winners = {}
             st.session_state.all_winners = []
+            st.session_state.absent_participants = []
     
     @error_handler
     def reset_session(self) -> None:
@@ -38,6 +39,7 @@ class SessionService:
         st.session_state.rounds = []
         st.session_state.drawn_winners = {}
         st.session_state.all_winners = []
+        st.session_state.absent_participants = []
         
         # Generate a new session ID
         session_id = SessionId.generate()
@@ -65,6 +67,7 @@ class SessionService:
             "participants_count": len(st.session_state.get("participants", [])),
             "rounds_count": len(st.session_state.get("rounds", [])),
             "total_winners_count": len(st.session_state.get("all_winners", [])),
+            "absent_winners_count": len(st.session_state.get("absent_participants", [])),
         }
     
     @error_handler

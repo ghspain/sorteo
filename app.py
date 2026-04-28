@@ -46,6 +46,19 @@ st.markdown("""
 .winner-card h4, .winner-card p {
     color: var(--text-color) !important;
 }
+.winner-card.absent {
+    border-color: #dc3545;
+    opacity: 0.7;
+}
+.winner-status {
+    font-weight: 600;
+}
+.winner-status.absent {
+    color: #dc3545 !important;
+}
+.winner-status.replacement {
+    color: #198754 !important;
+}
 .stButton button {
     width: 100%;
 }
@@ -88,7 +101,7 @@ with st.sidebar:
     # Update PII mode if changed
     if session_manager.get_pii_mode() != pii_mode:
         session_manager.set_pii_mode(pii_mode)
-        st.experimental_rerun()
+        st.rerun()
 
     if uploaded_file is not None:
         if st.button("Process Participant List"):
@@ -148,12 +161,16 @@ with st.sidebar:
         "session_id": session_manager.get_session_id(),
         "total_participants": len(session_manager.get_participants()),
         "total_winners": len(raffle_service.get_all_winners()),
+        "absent_winners": raffle_service.get_absent_winner_count(),
+        "present_winners": raffle_service.get_present_winner_count(),
         "pii_mode": session_manager.get_pii_mode()
     }
     st.text(f"Session ID: {session_info['session_id'][:8]}")
     st.text(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     st.text(f"Participants: {session_info['total_participants']}")
     st.text(f"Total Winners: {session_info['total_winners']}")
+    st.text(f"Present Winners: {session_info['present_winners']}")
+    st.text(f"Absent Winners: {session_info['absent_winners']}")
     st.text(f"PII Mode: {session_info['pii_mode']}")
 
 # Main content area
@@ -190,8 +207,38 @@ else:
         round_winners = raffle_service.get_winners_for_round(round_config['id'])
         if round_winners:
             st.write(f"Winners for Round {i + 1}:")
-            for winner in round_winners:
-                st.write(f"- {winner.get('First Name', '')} {winner.get('Last Name', '')} ({winner.get('Email', '')})")
+            for winner_index, winner in enumerate(round_winners):
+                winner_name = f"{winner.get('First Name', '')} {winner.get('Last Name', '')}".strip()
+                winner_email = winner.get('Email', '')
+                card_class = "winner-card absent" if winner.get('is_absent') else "winner-card"
+                status = "Absent" if winner.get('is_absent') else "Present"
+                status_class = "winner-status absent" if winner.get('is_absent') else "winner-status"
+                replacement_note = ""
+                if winner.get('is_replacement'):
+                    replacement_note = f"<p class='winner-status replacement'>Replacement for {winner.get('replaced', '')}</p>"
+                st.markdown(
+                    f"""
+                    <div class="{card_class}">
+                        <h4>{winner_name}</h4>
+                        <p>{winner_email}</p>
+                        <p class="{status_class}">{status}</p>
+                        {replacement_note}
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                if not winner.get('is_absent'):
+                    if st.button("Mark as absent", key=f"mark_absent_{round_config['id']}_{winner_index}"):
+                        replacement_drawn = raffle_service.mark_winner_absent(
+                            round_config['id'],
+                            winner_index,
+                            session_manager.get_participants()
+                        )
+                        if replacement_drawn:
+                            st.success("Winner marked absent and replacement drawn.")
+                        else:
+                            st.warning("Winner marked absent, but no eligible replacement was available.")
+                        st.rerun()
         else:
             # Only show draw button if there are no winners yet
             with col2:
@@ -211,6 +258,19 @@ else:
     winners = raffle_service.get_all_winners()
     if winners:
         for winner in winners:
-            st.write(f"- {winner.get('First Name', '')} {winner.get('Last Name', '')} ({winner.get('Email', '')})")
+            status = "Absent" if winner.get('is_absent') else "Present"
+            replacement = " Replacement" if winner.get('is_replacement') else ""
+            st.write(f"- {winner.get('First Name', '')} {winner.get('Last Name', '')} ({winner.get('Email', '')}) - {status}{replacement}")
+
+        winners_export = session_manager.get_all_winners_data()
+        if winners_export:
+            import pandas as pd
+            winners_df = pd.DataFrame(winners_export)
+            st.download_button(
+                "Download winners CSV",
+                winners_df.to_csv(index=False).encode('utf-8'),
+                "raffle_winners.csv",
+                "text/csv"
+            )
     else:
         st.write("No winners yet. Draw winners from the rounds above to see them here.")

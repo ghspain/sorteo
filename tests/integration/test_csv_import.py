@@ -17,7 +17,7 @@ class TestCSVImport:
         # Create a test CSV file
         test_file = "test_default_format.csv"
         data = pd.DataFrame({
-            "Email": ["test1@example.com", "test2@example.com"],
+            "Email": ["test1@ghspain.org", "test2@ghspain.org"],
             "First Name": ["John", "Jane"],
             "Last Name": ["Doe", "Smith"],
             "Checkin Date (UTC)": ["2023-01-01 10:00:00", ""]
@@ -33,12 +33,12 @@ class TestCSVImport:
             
             # Assertions
             assert len(participants) == 2
-            assert participants[0].email.value == "test1@example.com"
+            assert participants[0].email.value == "test1@ghspain.org"
             assert participants[0].name.first_name == "John"
             assert participants[0].name.last_name == "Doe"
             assert participants[0].checked_in_at.is_checked_in
             
-            assert participants[1].email.value == "test2@example.com"
+            assert participants[1].email.value == "test2@ghspain.org"
             assert participants[1].checked_in_at.is_checked_in is False
         finally:
             # Cleanup
@@ -50,7 +50,7 @@ class TestCSVImport:
         # Create a test CSV file
         test_file = "test_alt_format.csv"
         data = pd.DataFrame({
-            "email": ["test1@example.com", "test2@example.com"],
+            "email": ["test1@ghspain.org", "test2@ghspain.org"],
             "first_name": ["John", "Jane"],
             "last_name": ["Doe", "Smith"],
             "checked_in_at": ["2023-01-01 10:00:00", ""]
@@ -66,12 +66,12 @@ class TestCSVImport:
             
             # Assertions
             assert len(participants) == 2
-            assert participants[0].email.value == "test1@example.com"
+            assert participants[0].email.value == "test1@ghspain.org"
             assert participants[0].name.first_name == "John"
             assert participants[0].name.last_name == "Doe"
             assert participants[0].checked_in_at.is_checked_in
             
-            assert participants[1].email.value == "test2@example.com"
+            assert participants[1].email.value == "test2@ghspain.org"
             assert participants[1].checked_in_at.is_checked_in is False
         finally:
             # Cleanup
