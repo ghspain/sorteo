@@ -1,0 +1,57 @@
+{
+    "app": {
+        "title": "Sorteo de Eventos",
+        "configuration": "Configuración del Sorteo",
+        "upload_participants": "Subir lista de participantes",
+        "upload_csv": "Subir CSV con los datos de los participantes",
+        "only_checkin": "Solo participantes con check-in",
+        "process_list": "Procesar lista de participantes",
+        "loaded_participants": "Se han cargado {} participantes válidos",
+        "round_management": "Gestión de rondas",
+        "add_round": "Añadir ronda de sorteo",
+        "reset_session": "Reiniciar sesión de sorteo",
+        "session_reset": "Sesión reiniciada correctamente",
+        "session_info": "Información de sesión",
+        "session_id": "ID de sesión: {}",
+        "date": "Fecha: {}",
+        "participants": "Participantes: {}",
+        "total_winners": "Ganadores totales: {}"
+    },
+    "welcome": {
+        "message": "Sube un archivo CSV con la lista de participantes para comenzar",
+        "expected_format": "Formato de archivo esperado",
+        "format_description": "El archivo CSV debe contener al menos las siguientes columnas:\n- 'Checkin Date (UTC)' o 'checked_in_at': Fecha de check-in del participante\n- 'Email' o 'email': Correo electrónico del participante\n- 'First Name' o 'first_name': Nombre del participante\n- 'Last Name' o 'last_name': Apellido del participante"
+    },
+    "participants": {
+        "summary": "Resumen de Participantes"
+    },
+    "rounds": {
+        "none_configured": "No hay rondas configuradas. Añade al menos una ronda para realizar el sorteo.",
+        "round": "Ronda {}",
+        "delete_round": "Eliminar ronda",
+        "round_name": "Nombre de la ronda",
+        "num_winners": "Número de ganadores",
+        "prizes": "Premios",
+        "add_prize": "Añadir premio",
+        "prize": "Premio {}",
+        "delete": "Eliminar",
+        "prize_name": "Nombre del premio",
+        "description": "Descripción",
+        "add_another_prize": "Añadir otro premio",
+        "draw_winners": "Sortear ganadores",
+        "upload_first": "Debes cargar un archivo de participantes primero",
+        "winners_drawn": "Se han sorteado {} ganadores",
+        "round_winners": "Ganadores de esta ronda",
+        "prize_label": "Premio: {}"
+    },
+    "winners": {
+        "summary": "Resumen de todos los ganadores",
+        "download_csv": "Descargar resultados en CSV"
+    },
+    "errors": {
+        "not_enough_participants": "No hay suficientes participantes disponibles. Solicitados: {}, Disponibles: {}",
+        "no_participants": "No hay participantes para el sorteo",
+        "csv_columns_not_found": "No se encontraron todas las columnas requeridas en el CSV",
+        "csv_processing_error": "Error al procesar el archivo CSV: {}"
+    }
+}

@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "buildCommand": null,
+  "outputDirectory": null,
+  "framework": null,
+  "installCommand": null,
+  "devCommand": null,
+  "builds": [{
+    "src": "app.py",
+    "use": "@vercel/docker"
+  }],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "app.py"
+    }
+  ]
+}

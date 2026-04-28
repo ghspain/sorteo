@@ -1,141 +1,95 @@
 # Event Raffle Application
 
-This web application allows managing raffles at events, providing a system to:
-
-- Load a participant list from a CSV file
-- Create multiple raffle rounds
-- Define different prizes per round
-- Perform random draws ensuring unique winners throughout the event
-- Export results
+Streamlit application for running event raffles from attendee CSV exports.
 
 ## Features
 
-- Intuitive user interface built with Streamlit
-- Support for CSV files with different column formats
-- Filter participants by check-in status
-- Configuration of multiple rounds with variable number of winners
-- Prize management system
-- Guarantee that no participant wins more than one prize
-- Results export
+- Import participants from CSV files with supported column aliases.
+- Optionally restrict the draw to checked-in attendees.
+- Configure multiple raffle rounds and prizes.
+- Prevent duplicate winners across the full session.
+- Mark a drawn winner as absent and automatically redraw a replacement when possible.
+- Exclude absent winners from future rounds.
+- Export raffle results to CSV with round, prize, status, and replacement information.
+- Run locally with Python or Docker.
 
 ## Requirements
 
-- Python 3.7 or higher
+- Python 3.10 or higher
 - Dependencies listed in `requirements.txt`
 
-## How to run
+## Run Locally
 
-### python
+1. Create and activate a virtual environment.
 
-1. Virtual environment setup (optional but recommended):
+```bash
+python -m venv venv
+source venv/bin/activate
+```
 
-    ```bash
-    python -m venv venv
-    source venv/bin/activate  # On Windows use `venv\Scripts\activate`
-    ```
+2. Install dependencies.
 
-2. Install dependencies
+```bash
+pip install -r requirements.txt
+```
 
-    ```bash
-    pip install -r requirements.txt
-    ```
+3. Start the application.
 
-3. Run the app
+```bash
+streamlit run app.py
+```
 
-    ```bash
-    streamlit run app.py
-    ```
+4. Open `http://localhost:8501`.
 
-4. Open your browser and go to `http://localhost:8501`
+## Run With Docker
 
-### Docker
+Build and run the container directly:
 
-1. Build the Docker image
+```bash
+docker build -t sorteo-app .
+docker run -p 8501:8501 sorteo-app
+```
 
-    ```bash
-    docker build -t sorteo-app .
-    ```
+Or use Docker Compose:
 
-2. Run the Docker container
+```bash
+docker-compose up
+```
 
-    ```bash
-    docker run -p 8501:8501 sorteo-app
-    ```
+## Raffle Workflow
 
-3. Open your browser and go to `http://localhost:8501`
+1. Upload an attendee CSV export.
+2. Choose whether to limit the draw to checked-in participants.
+3. Create one or more rounds and add prizes.
+4. Draw winners for each round.
+5. If a winner is no longer present, use the absent action on the winner card.
+6. The application marks that winner as absent, keeps the prize assignment, and redraws a replacement from the remaining eligible participants.
+7. Export the final winners CSV when the session is complete.
 
-### Docker Compose
+## Testing
 
-1. Start the application using Docker Compose
+Fast local verification used for this stabilization:
 
-    ```bash
-    docker-compose up
-    ```
+```bash
+python -m pytest tests/unit tests/integration -q
+```
 
-2. Open your browser and go to `http://localhost:8501`
+End-to-end tests require a running Streamlit server on port `8501`:
 
-## Usage
+```bash
+streamlit run app.py --server.port 8501 --server.address 0.0.0.0 --server.headless true
+STREAMLIT_HOST=127.0.0.1 STREAMLIT_PORT=8501 python -m pytest tests/e2e/test_csv_upload.py tests/e2e/test_raffle_process.py -q
+```
 
-Options for using the application:
+## Architecture
 
-- **Web Interface**: Use the web interface for a user-friendly experience.
-- **Command Line Interface (CLI)**: Use the command line for quick operations or automation.
+The project follows a layered structure:
 
-### cli
+- `presentation/`: Streamlit UI and session state helpers
+- `application/`: orchestration and raffle/session services
+- `domain/`: domain models and value objects
+- `infrastructure/`: CSV parsing, logging, and error handling
 
-NOTE:
+## Notes
 
-- `-f` or `--file`: Path to the CSV file with participant data
-- `-w` or `--winners`: Number of winners to draw
-- `-c` or `--checked-in`: Use only checked-in participants
-- `-p` or `--prize`: Prize name for the round
-- `-r` or `--round`: Round name for the draw
-- `-h` or `--help`: Show help message and exit
-
-Steps:
-
-1. **Download the participant list**:
-
-   - Access the [GDG Bevy](https://gdg.community.dev/) or [Luma](https://lu.ma/) Platform and download the participant list to your event in CSV.
-
-2. **Run the script**:
-
-    - Make sure you have Python 3.7 or higher installed
-    - Install the required dependencies using `pip install -r requirements.txt`
-    - Make sure the script is executable by running `chmod +x sorteo.py`
-    - Run the script with the command `python sorteo.py -f <event-participant-list>.csv -w <number-of-winners>`
-
-### web
-
-1. **Download the participant list**:
-
-   - Access the [GDG Bevy](https://gdg.community.dev/) or [Luma](https://lu.ma/) Platform and download the participant list to your event in CSV.
-
-2. **Upload participant list**:
-
-   - Upload a CSV file with participant data
-   - Optionally filter by checked-in participants
-
-3. **Round configuration**:
-
-   - Add one or more raffle rounds
-   - Configure name and number of winners for each round
-   - Add prizes to be raffled in each round
-
-4. **Conduct raffles**:
-   - Use the "Draw winners" button in each round
-   - View winners immediately
-   - Export results when finished
-
-## CSV File Format
-
-The CSV file must contain at least the following columns:
-
-- `Checkin Date (UTC)` or `checked_in_at`: Check-in date
-- `Email` or `email`: Participant's email
-- `First Name` or `first_name`: Participant's first name
-- `Last Name` or `last_name`: Participant's last name
-
-## License
-
-This project is licensed under the [MIT License](LICENSE).
+- Test fixtures should avoid blacklisted email domains such as `example.com` and `test.com`, because the CSV import intentionally filters them out.

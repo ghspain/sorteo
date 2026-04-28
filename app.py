@@ -1,42 +1,34 @@
 #!/usr/bin/env python3
-import streamlit as st
-import pandas as pd
-import csv
-import io
-import uuid
+
+"""
+Main Streamlit application for the GH Spain Raffles.
+"""
 from datetime import datetime
 
-def mask_email(email):
-    """Mask email to protect privacy (e.g., j***e@d***n.com)"""
-    if not email or '@' not in email:
-        return email
+import streamlit as st
 
-    local_part, domain_part = email.split('@')
+from application.participant_service import ParticipantService
+from application.session_service import SessionService
+from application.raffle_service import RaffleService
+from infrastructure.csv_repository import CsvRepository
+from presentation.session_state_manager import SessionStateManager
 
-    # Handle the local part (username)
-    if len(local_part) > 2:
-        masked_local = local_part[0] + '*' * (len(local_part) - 2) + local_part[-1]
-    else:
-        masked_local = local_part[0] + '*' * (len(local_part) - 1) if len(local_part) > 0 else ''
+# Initialize session state using the manager (following SRP and DDD)
+session_manager = SessionStateManager()
+session_manager.initialize_session_state()
 
-    # Handle the domain part
-    domain_name, *ext_parts = domain_part.split('.')
-    domain_ext = '.'.join(ext_parts)
-
-    if len(domain_name) > 1:
-        masked_domain = domain_name[0] + '*' * (len(domain_name) - 1)
-    else:
-        masked_domain = domain_name
-
-    return f"{masked_local}@{masked_domain}.{domain_ext}"
-
-# Set page configuration
+# Page configuration
 st.set_page_config(
-    page_title="Sorteo de Eventos",
-    page_icon="🎫",
+    page_title="GH Spain Raffle App",
+    page_icon="🎟️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+# Initialize services with proper dependency injection
+participant_service = ParticipantService(CsvRepository(session_manager.get_pii_mode()))
+session_service = SessionService()
+raffle_service = RaffleService(session_service)
 
 # CSS for making it look nicer
 st.markdown("""
@@ -54,6 +46,19 @@ st.markdown("""
 .winner-card h4, .winner-card p {
     color: var(--text-color) !important;
 }
+.winner-card.absent {
+    border-color: #dc3545;
+    opacity: 0.7;
+}
+.winner-status {
+    font-weight: 600;
+}
+.winner-status.absent {
+    color: #dc3545 !important;
+}
+.winner-status.replacement {
+    color: #198754 !important;
+}
 .stButton button {
     width: 100%;
 }
@@ -67,308 +72,205 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Initialize session state if not exists
-if 'participants' not in st.session_state:
-    st.session_state.participants = None
-if 'all_winners' not in st.session_state:
-    st.session_state.all_winners = []  # List to store all winners across rounds
-if 'rounds' not in st.session_state:
-    st.session_state.rounds = []  # List to store round configurations
-if 'session_id' not in st.session_state:
-    st.session_state.session_id = str(uuid.uuid4())
-if 'drawn_winners' not in st.session_state:
-    st.session_state.drawn_winners = {}  # Dictionary to store winners by round
-
-def reset_session():
-    """Reset the session completely"""
-    st.session_state.participants = None
-    st.session_state.all_winners = []
-    st.session_state.rounds = []
-    st.session_state.session_id = str(uuid.uuid4())
-    st.session_state.drawn_winners = {}
-
-def process_csv(uploaded_file, only_checkin=True):
-    """Process uploaded CSV file and filter participants"""
-    try:
-        # Try to read the CSV file
-        content = uploaded_file.getvalue().decode('utf-8')
-        participants_df = pd.read_csv(io.StringIO(content))
-
-        # Check for required columns
-        expected_columns = [
-            ('Checkin Date (UTC)', 'checked_in_at'),
-            ('Email', 'email'),
-            ('First Name', 'first_name'),
-            ('Last Name', 'last_name')
-        ]
-
-        # Map actual column names to standardized names
-        column_mapping = {}
-        for expected_pair in expected_columns:
-            found = False
-            for expected in expected_pair:
-                if expected in participants_df.columns:
-                    column_mapping[expected] = expected_pair[0]
-                    found = True
-                    break
-            if not found:
-                st.error(f"No se encontró ninguna columna del tipo {expected_pair}")
-                return None
-
-        # Rename columns to standardized names
-        participants_df = participants_df.rename(columns=column_mapping)
-
-        # Filter participants based on check-in status
-        if only_checkin:
-            participants_df = participants_df[participants_df['Checkin Date (UTC)'].notna() &
-                                             (participants_df['Checkin Date (UTC)'] != '')]
-
-        # Filter out specific email domains if needed
-        participants_df = participants_df[~participants_df['Email'].str.contains('bevylabs', case=False, na=False)]
-
-        return participants_df
-    except Exception as e:
-        st.error(f"Error al procesar el archivo CSV: {e}")
-        return None
-
-def draw_winners(participants_df, num_winners, exclude_emails=None):
-    """Draw winners from participants"""
-    if exclude_emails is None:
-        exclude_emails = []
-
-    # Filter out previous winners
-    available_participants = participants_df[~participants_df['Email'].isin(exclude_emails)]
-
-    if len(available_participants) < num_winners:
-        st.error(f"No hay suficientes participantes disponibles. Solicitados: {num_winners}, Disponibles: {len(available_participants)}")
-        return []
-
-    # Select winners randomly
-    winners = available_participants.sample(n=num_winners)
-    return winners.to_dict('records')
-
-def add_round():
-    """Add a new round configuration"""
-    st.session_state.rounds.append({
-        'id': len(st.session_state.rounds) + 1,
-        'name': f"Ronda {len(st.session_state.rounds) + 1}",
-        'num_winners': 1,
-        'prizes': []
-    })
-
-def add_prize(round_idx):
-    """Add a new prize to a specific round"""
-    st.session_state.rounds[round_idx]['prizes'].append({
-        'id': len(st.session_state.rounds[round_idx]['prizes']) + 1,
-        'name': '',
-        'description': '',
-    })
-
-def delete_round(round_idx):
-    """Delete a round and its associated winners"""
-    round_id = st.session_state.rounds[round_idx]['id']
-    if round_id in st.session_state.drawn_winners:
-        # Get emails of winners from this round
-        winner_emails = [w['Email'] for w in st.session_state.drawn_winners[round_id]]
-        # Remove these winners from the all_winners list
-        st.session_state.all_winners = [
-            email for email in st.session_state.all_winners
-            if email not in winner_emails
-        ]
-        # Remove the round from drawn_winners
-        del st.session_state.drawn_winners[round_id]
-
-    # Remove the round configuration
-    st.session_state.rounds.pop(round_idx)
-
 # Sidebar for configuration
 with st.sidebar:
-    st.title("🎲 Configuración del Sorteo")
+    st.title("🎲 Raffle Configuration")
 
     # File upload section
-    st.subheader("Subir lista de participantes")
-    uploaded_file = st.file_uploader("Subir CSV con los datos de los participantes", type=['csv'])
+    st.subheader("Upload Participant List")
+    uploaded_file = st.file_uploader("Upload CSV with participant data", type=['csv'])
 
-    only_checkin = st.checkbox("Solo participantes con check-in", value=True)
+    only_check_in = st.checkbox("Only participants with check-in", value=True)
+
+    # Privacy settings
+    st.subheader("Privacy Settings")
+    pii_mode = st.radio(
+        "Personal Data Handling Mode",
+        [
+            CsvRepository.PII_MODE_ORIGINAL,
+            CsvRepository.PII_MODE_MASKED,
+            CsvRepository.PII_MODE_PSEUDONYMIZED
+        ],
+        format_func=lambda x: {
+            CsvRepository.PII_MODE_ORIGINAL: "Original (no protection)",
+            CsvRepository.PII_MODE_MASKED: "Masked (basic protection)",
+            CsvRepository.PII_MODE_PSEUDONYMIZED: "Pseudonymized (advanced protection)"
+        }.get(x)
+    )
+
+    # Update PII mode if changed
+    if session_manager.get_pii_mode() != pii_mode:
+        session_manager.set_pii_mode(pii_mode)
+        st.rerun()
 
     if uploaded_file is not None:
-        if st.button("Procesar lista de participantes"):
-            participants_df = process_csv(uploaded_file, only_checkin)
-            if participants_df is not None:
-                st.session_state.participants = participants_df
-                st.success(f"Se han cargado {len(participants_df)} participantes válidos")
+        if st.button("Process Participant List"):
+            participants = participant_service.process_participants_file(uploaded_file.getvalue(), only_checked_in=only_check_in)
+            if participants is not None:
+                session_manager.set_participants(participants)
+                st.success(f"{len(participants)} valid participants have been loaded")
+
+        # Display column mapping information for clarity
+        with st.expander("Column Mapping Information"):
+            st.write("""
+            The application handles various column naming formats:
+            - Check-in timestamps: 'Check-in Date (UTC)', 'checked_in_at', 'checkin_date', or 'checkin_time'
+            - Email: 'Email', 'email', 'email_address' or 'mail'
+            - First name: 'First Name', 'first_name', 'firstname', or 'name'
+            - Last name: 'Last Name', 'last_name', 'lastname', or 'surname'
+
+            All formats are normalized internally for consistent processing.
+            """)
+
+        # GDPR compliance check
+        if st.button("Check GDPR Compliance"):
+            try:
+                # Use the more secure method that handles temporary files properly
+                report = CsvRepository.check_gdpr_compliance_from_bytes(uploaded_file.getvalue())
+
+                # Display report
+                if report['compliant']:
+                    st.success("The file appears to comply with GDPR")
+                else:
+                    issues = ""
+                    for issue in report['issues']:
+                        issues += f"- {issue}\n"
+                    st.warning("The file has GDPR compliance issues:" + "\n" + issues, icon="⚠️")
+
+                if report['recommendations']:
+                    recommendations = ""
+                    for rec in report['recommendations']:
+                        recommendations += f"- {rec}\n"
+                    st.info("Recommendations:" + "\n" + recommendations, icon="ℹ️")
+            except Exception as e:
+                st.error(f"Error checking GDPR compliance: {e}")
 
     # Round management section
-    st.subheader("Gestión de rondas")
-    if st.button("Añadir ronda de sorteo"):
-        add_round()
+    st.subheader("Round Management")
+    if st.button("Add Raffle Round"):
+        raffle_service.add_round()
 
     # Reset button at the bottom
-    if st.button("Reiniciar sesión de sorteo"):
-        reset_session()
-        st.success("Sesión reiniciada correctamente")
+    if st.button("Reset Raffle Session"):
+        session_manager.reset_session()
+        st.success("Raffle session successfully reset")
 
     # Session info
-    st.subheader("Información de sesión")
-    st.text(f"ID de sesión: {st.session_state.session_id[:8]}")
-    st.text(f"Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    if st.session_state.participants is not None:
-        st.text(f"Participantes: {len(st.session_state.participants)}")
-    st.text(f"Ganadores totales: {len(st.session_state.all_winners)}")
+    st.subheader("Session Information")
+    session_info = {
+        "session_id": session_manager.get_session_id(),
+        "total_participants": len(session_manager.get_participants()),
+        "total_winners": len(raffle_service.get_all_winners()),
+        "absent_winners": raffle_service.get_absent_winner_count(),
+        "present_winners": raffle_service.get_present_winner_count(),
+        "pii_mode": session_manager.get_pii_mode()
+    }
+    st.text(f"Session ID: {session_info['session_id'][:8]}")
+    st.text(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    st.text(f"Participants: {session_info['total_participants']}")
+    st.text(f"Total Winners: {session_info['total_winners']}")
+    st.text(f"Present Winners: {session_info['present_winners']}")
+    st.text(f"Absent Winners: {session_info['absent_winners']}")
+    st.text(f"PII Mode: {session_info['pii_mode']}")
 
 # Main content area
-st.title("🎉 Sorteo de Eventos")
+st.title("🎉 GH Spain Raffle App")
 
 # Welcome message if no file is uploaded yet
-if st.session_state.participants is None:
-    st.info("Sube un archivo CSV con la lista de participantes para comenzar")
+if not session_manager.get_participants():
+    st.write("Welcome to the GH Spain Raffle App! Please upload a participant list to get started.")
 
-    with st.expander("Formato de archivo esperado"):
+    with st.expander("Expected File Format"):
         st.write("""
-        El archivo CSV debe contener al menos las siguientes columnas:
-        - 'Checkin Date (UTC)' o 'checked_in_at': Fecha de check-in del participante
-        - 'Email' o 'email': Correo electrónico del participante
-        - 'First Name' o 'first_name': Nombre del participante
-        - 'Last Name' o 'last_name': Apellido del participante
+        The CSV file must contain at least the following columns:
+        - 'Check-in Date (UTC)' or 'checked_in_at': Participant check-in date
+        - 'Email' or 'email': Participant email address
+        - 'First Name' or 'first_name': Participant first name
+        - 'Last Name' or 'last_name': Participant last name
         """)
 else:
     # Show participants summary
-    with st.expander("Resumen de Participantes"):
-        # Create a display dataframe with masked emails
-        display_df = st.session_state.participants.copy()
-        display_df['Email'] = display_df['Email'].apply(mask_email)
-        st.dataframe(display_df[['First Name', 'Last Name', 'Email', 'Checkin Date (UTC)']])
+    with st.expander("Participant Summary"):
+        st.write(f"Total Participants: {len(session_manager.get_participants())}")
 
     # Display and configure rounds
-    if not st.session_state.rounds:
-        st.warning("No hay rondas configuradas. Añade al menos una ronda para realizar el sorteo.")
+    rounds = session_manager.get_rounds()
+    if not rounds:
+        st.warning("No rounds configured. Add at least one round to proceed with the raffle.")
 
-    for i, round_config in enumerate(st.session_state.rounds):
-        round_id = round_config['id']
+    for i, round_config in enumerate(rounds):
         col1, col2 = st.columns([3, 1])
-
         with col1:
-            st.markdown(f"### Ronda {i+1}: {round_config['name']}")
+            st.subheader(f"Round {i + 1}: {round_config.get('name', 'Prize Round')}")
 
-        with col2:
-            st.button("Eliminar ronda", key=f"del_round_{i}", on_click=delete_round, args=(i,))
-
-        # Round configuration
-        col1, col2 = st.columns(2)
-        with col1:
-            st.session_state.rounds[i]['name'] = st.text_input("Nombre de la ronda",
-                                                               value=round_config['name'],
-                                                               key=f"round_name_{i}")
-        with col2:
-            st.session_state.rounds[i]['num_winners'] = st.number_input("Número de ganadores",
-                                                                        min_value=1, value=round_config['num_winners'],
-                                                                        key=f"num_winners_{i}")
-
-        # Prize configuration
-        st.subheader("Premios")
-
-        if not round_config['prizes']:
-            st.button("Añadir premio", key=f"add_prize_{i}", on_click=add_prize, args=(i,))
-
-        for j, prize in enumerate(round_config['prizes']):
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                st.markdown(f"##### Premio {j+1}")
-            with col2:
-                if st.button("Eliminar", key=f"del_prize_{i}_{j}"):
-                    st.session_state.rounds[i]['prizes'].pop(j)
-                    st.experimental_rerun()
-
-            col1, col2 = st.columns(2)
-            with col1:
-                st.session_state.rounds[i]['prizes'][j]['name'] = st.text_input(
-                    "Nombre del premio", value=prize['name'], key=f"prize_name_{i}_{j}")
-            with col2:
-                st.session_state.rounds[i]['prizes'][j]['description'] = st.text_input(
-                    "Descripción", value=prize['description'], key=f"prize_desc_{i}_{j}")
-
-        if round_config['prizes']:
-            st.button("Añadir otro premio", key=f"add_another_prize_{i}", on_click=add_prize, args=(i,))
-
-        # Draw winners button
-        if st.button("Sortear ganadores", key=f"draw_{i}"):
-            if st.session_state.participants is None:
-                st.error("Debes cargar un archivo de participantes primero")
-            else:
-                num_winners = int(round_config['num_winners'])
-                winners = draw_winners(
-                    st.session_state.participants,
-                    num_winners,
-                    exclude_emails=st.session_state.all_winners
-                )
-
-                if winners:
-                    # Store winners by round
-                    st.session_state.drawn_winners[round_id] = winners
-
-                    # Add winner emails to the global list
-                    for winner in winners:
-                        st.session_state.all_winners.append(winner['Email'])
-
-                    st.success(f"Se han sorteado {len(winners)} ganadores")
-                    st.experimental_rerun()
-
-        # Display winners for this round
-        if round_id in st.session_state.drawn_winners and st.session_state.drawn_winners[round_id]:
-            st.subheader("Ganadores de esta ronda")
-            
-            winners = st.session_state.drawn_winners[round_id]
-            cols = st.columns(min(3, len(winners)))
-            
-            for j, winner in enumerate(winners):
-                with cols[j % len(cols)]:
-                    st.markdown(f"""
-                    <div class="winner-card">
-                        <h4>{winner['First Name']} {winner['Last Name']}</h4>
-                        <p>{mask_email(winner['Email'])}</p>
+        # Display existing winners for this round if any
+        round_winners = raffle_service.get_winners_for_round(round_config['id'])
+        if round_winners:
+            st.write(f"Winners for Round {i + 1}:")
+            for winner_index, winner in enumerate(round_winners):
+                winner_name = f"{winner.get('First Name', '')} {winner.get('Last Name', '')}".strip()
+                winner_email = winner.get('Email', '')
+                card_class = "winner-card absent" if winner.get('is_absent') else "winner-card"
+                status = "Absent" if winner.get('is_absent') else "Present"
+                status_class = "winner-status absent" if winner.get('is_absent') else "winner-status"
+                replacement_note = ""
+                if winner.get('is_replacement'):
+                    replacement_note = f"<p class='winner-status replacement'>Replacement for {winner.get('replaced', '')}</p>"
+                st.markdown(
+                    f"""
+                    <div class="{card_class}">
+                        <h4>{winner_name}</h4>
+                        <p>{winner_email}</p>
+                        <p class="{status_class}">{status}</p>
+                        {replacement_note}
                     </div>
-                    """, unsafe_allow_html=True)
-                    
-                    # Assign prize if available
-                    if j < len(round_config['prizes']):
-                        prize = round_config['prizes'][j]
-                        st.info(f"Premio: {prize['name']}")
-
-        st.markdown("---")
+                    """,
+                    unsafe_allow_html=True
+                )
+                if not winner.get('is_absent'):
+                    if st.button("Mark as absent", key=f"mark_absent_{round_config['id']}_{winner_index}"):
+                        replacement_drawn = raffle_service.mark_winner_absent(
+                            round_config['id'],
+                            winner_index,
+                            session_manager.get_participants()
+                        )
+                        if replacement_drawn:
+                            st.success("Winner marked absent and replacement drawn.")
+                        else:
+                            st.warning("Winner marked absent, but no eligible replacement was available.")
+                        st.rerun()
+        else:
+            # Only show draw button if there are no winners yet
+            with col2:
+                if st.button(f"Draw Winner(s) for Round {i + 1}"):
+                    winners = raffle_service.select_winners(
+                        round_config['id'],
+                        session_manager.get_participants(),
+                        round_config.get('num_winners', 1)
+                    )
+                    if winners:
+                        st.success(f"Selected {len(winners)} winners!")
+                    else:
+                        st.error("No winners could be selected. Check participant list.")
 
     # Summary of all winners
-    if any(st.session_state.drawn_winners.values()):
-        st.header("Resumen de todos los ganadores")
+    st.subheader("Winners Summary:")
+    winners = raffle_service.get_all_winners()
+    if winners:
+        for winner in winners:
+            status = "Absent" if winner.get('is_absent') else "Present"
+            replacement = " Replacement" if winner.get('is_replacement') else ""
+            st.write(f"- {winner.get('First Name', '')} {winner.get('Last Name', '')} ({winner.get('Email', '')}) - {status}{replacement}")
 
-        all_winners_data = []
-        for round_id, winners in st.session_state.drawn_winners.items():
-            round_name = next((r['name'] for r in st.session_state.rounds if r['id'] == round_id), f"Ronda {round_id}")
-
-            for i, winner in enumerate(winners):
-                winner_data = {
-                    'Ronda': round_name,
-                    'Nombre': f"{winner['First Name']} {winner['Last Name']}",
-                    'Email': mask_email(winner['Email'])
-                }
-
-                # Add prize info if available
-                round_config = next((r for r in st.session_state.rounds if r['id'] == round_id), None)
-                if round_config and i < len(round_config['prizes']):
-                    winner_data['Premio'] = round_config['prizes'][i]['name']
-                else:
-                    winner_data['Premio'] = '-'
-
-                all_winners_data.append(winner_data)
-
-        if all_winners_data:
-            winners_df = pd.DataFrame(all_winners_data)
-            st.dataframe(winners_df)
-
-            # Export winners to CSV
-            csv = winners_df.to_csv(index=False)
+        winners_export = session_manager.get_all_winners_data()
+        if winners_export:
+            import pandas as pd
+            winners_df = pd.DataFrame(winners_export)
             st.download_button(
-                label="Descargar resultados en CSV",
-                data=csv,
-                file_name=f"ganadores_{st.session_state.session_id[:8]}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                mime="text/csv"
+                "Download winners CSV",
+                winners_df.to_csv(index=False).encode('utf-8'),
+                "raffle_winners.csv",
+                "text/csv"
             )
+    else:
+        st.write("No winners yet. Draw winners from the rounds above to see them here.")
