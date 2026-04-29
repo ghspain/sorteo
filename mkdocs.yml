@@ -1,0 +1,42 @@
+site_name: GHSpain Sorteo
+site_description: Documentation for the GHSpain raffle application
+site_url: https://ghspain.github.io/sorteo/
+repo_url: https://github.com/ghspain/sorteo
+repo_name: ghspain/sorteo
+docs_dir: docs
+site_dir: site
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.sections
+    - navigation.expand
+    - content.code.copy
+plugins:
+  - search
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+extra_javascript:
+  - javascripts/mermaid.mjs
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Raffle Workflow: workflow.md
+  - Testing: testing.md
+  - Deployment: deployment.md
+  - Architecture Overview: diagrams.md
+  - Detailed Diagrams:
+      - Raffle Round Execution: diagram6_improved.md
+      - Session Lifecycle: diagram7_improved.md
+      - Deployment Diagram: diagram8_improved.md
+      - Event Flow Diagram: diagram9_improved.md

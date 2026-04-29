@@ -42,3 +42,8 @@ coverage.xml
 .coverage
 *.coverage.*
 *.cover
+
+# Documentation builds
+site/
+docs/docusaurus-site/node_modules/
+docs/docusaurus-site/build/

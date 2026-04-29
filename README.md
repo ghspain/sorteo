@@ -56,6 +56,17 @@ Or use Docker Compose:
 docker-compose up
 ```
 
+## Documentation
+
+Project documentation is published through GitHub Pages at `https://ghspain.github.io/sorteo/`.
+
+To preview the docs locally:
+
+```bash
+pip install -r requirements-docs.txt
+mkdocs serve
+```
+
 ## Raffle Workflow
 
 1. Upload an attendee CSV export.

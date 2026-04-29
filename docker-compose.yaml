@@ -63,6 +63,22 @@ services:
       - raffle-network
     profiles: ["test"]
 
+  # Documentation service using MkDocs
+  docs:
+    build:
+      context: .
+      dockerfile: docs/Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./docs:/app/docs
+      - ./mkdocs.yml:/app/mkdocs.yml:ro
+    networks:
+      - raffle-network
+    restart: unless-stopped
+    command: mkdocs serve --dev-addr 0.0.0.0:8000
+    profiles: ["docs", "dev"]
+
 networks:
   raffle-network:
     driver: bridge
