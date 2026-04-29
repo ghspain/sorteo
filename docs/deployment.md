@@ -15,7 +15,7 @@ Build steps:
 
 The expected published URL is:
 
-- `https://ghspain.github.io/sorteo/`
+- `https://githubcommunity.es/sorteo/`
 
 ## Local Documentation Preview
 

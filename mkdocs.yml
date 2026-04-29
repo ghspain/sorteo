@@ -1,6 +1,6 @@
 site_name: GHSpain Sorteo
 site_description: Documentation for the GHSpain raffle application
-site_url: https://ghspain.github.io/sorteo/
+site_url: https://githubcommunity.es/sorteo/
 repo_url: https://github.com/ghspain/sorteo
 repo_name: ghspain/sorteo
 docs_dir: docs

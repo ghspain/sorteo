@@ -58,7 +58,7 @@ docker-compose up
 
 ## Documentation
 
-Project documentation is published through GitHub Pages at `https://ghspain.github.io/sorteo/`.
+Project documentation is published through GitHub Pages at `https://githubcommunity.es/sorteo/`.
 
 To preview the docs locally:
 
